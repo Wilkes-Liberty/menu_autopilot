@@ -1,0 +1,28 @@
+{
+    "name": "drupal/menu_autopilot",
+    "description": "Automatic, content-driven navigation for Drupal — curate your top-level menu and let each item's children build and maintain themselves from published content. Headless-ready (clean canonical URLs, multilingual, cache-tag revalidation) and works with traditional themes.",
+    "type": "drupal-module",
+    "license": "GPL-2.0-or-later",
+    "homepage": "https://www.drupal.org/project/menu_autopilot",
+    "authors": [
+        {
+            "name": "Jeremy Michael Cerda",
+            "email": "jmcerda@wilkesliberty.com",
+            "role": "Maintainer"
+        },
+        {
+            "name": "Wilkes & Liberty, LLC",
+            "homepage": "https://wilkesliberty.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Wilkes-Liberty/menu_autopilot/issues",
+        "source": "https://github.com/Wilkes-Liberty/menu_autopilot"
+    },
+    "require": {
+        "drupal/core": "^10.3 || ^11"
+    },
+    "suggest": {
+        "drupal/token": "Adds the token browser UI and extra tokens for the child link title pattern."
+    }
+}

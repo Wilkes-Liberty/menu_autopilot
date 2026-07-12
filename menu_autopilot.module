@@ -1,0 +1,368 @@
+<?php
+
+/**
+ * @file
+ * Hybrid navigation: editor-curated parents with auto-populated children.
+ *
+ * Menu Autopilot lets an editor mark any menu link as a "dynamic parent" whose
+ * children are generated from published content (a taxonomy term's members, a
+ * content type, or a hand-picked list) and kept in sync automatically. The
+ * generated child links are ordinary menu_link_content entities pointing at
+ * canonical `entity:node/<nid>` URIs, so every menu consumer — GraphQL,
+ * JSON:API, a Twig theme — sees a single, coherent tree with no special work.
+ *
+ * The per-link configuration and the managed-child bookkeeping are stored in a
+ * single internal `menu_autopilot` map base field on menu_link_content (see
+ * menu_autopilot.install); the heavy lifting lives in NavSourceResolver and
+ * NavSyncManager.
+ */
+
+use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\menu_link_content\MenuLinkContentInterface;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_help().
+ */
+function menu_autopilot_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name === 'help.page.menu_autopilot') {
+    $output = '';
+    $output .= '<h2>' . t('About') . '</h2>';
+    $output .= '<p>' . t('Menu Autopilot brings hybrid navigation to Drupal: editors curate the top level of a menu by hand, while the children of chosen parents are generated from published content and kept in sync automatically. It is to navigation what Pathauto is to URL aliases.') . '</p>';
+    $output .= '<h2>' . t('Marking a parent dynamic') . '</h2>';
+    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Children are created, reordered, renamed, and removed as content is published, updated, and unpublished — you never hand-place them.') . '</p>';
+    $output .= '<h2>' . t('Clean URLs') . '</h2>';
+    $output .= '<p>' . t('Generated links always store a canonical <code>entity:node/&lt;id&gt;</code> URI, which resolves to the node’s real path alias. They never leak an editorial route such as <code>/node/12/latest</code>.') . '</p>';
+    return $output;
+  }
+  return NULL;
+}
+
+/**
+ * Implements hook_entity_base_field_info().
+ *
+ * Adds the internal `menu_autopilot` map field to every menu_link_content
+ * entity. On a dynamic parent it holds the source descriptor; on a generated
+ * child it holds `['managed' => TRUE, 'node' => <nid>]` so the sync manager can
+ * recognise the links it owns. menu_link_content is a content entity and does
+ * not support third-party settings, so a base field is the correct home for
+ * this data; it is installed by menu_autopilot_install() via the entity
+ * definition update manager.
+ */
+function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type) {
+  if ($entity_type->id() === 'menu_link_content') {
+    return ['menu_autopilot' => _menu_autopilot_base_field()];
+  }
+  return [];
+}
+
+/**
+ * Builds the shared definition of the `menu_autopilot` base field.
+ *
+ * Used by both hook_entity_base_field_info() and the install hook so the two
+ * can never drift.
+ *
+ * @return \Drupal\Core\Field\BaseFieldDefinition
+ *   The field definition.
+ */
+function _menu_autopilot_base_field() {
+  return BaseFieldDefinition::create('map')
+    ->setLabel(t('Menu Autopilot'))
+    ->setDescription(t('Dynamic-children source descriptor (on parents) and managed-child metadata (on generated links).'))
+    // Internal plumbing: keep it out of JSON:API, REST, and GraphQL output.
+    ->setInternal(TRUE)
+    ->setDisplayConfigurable('form', FALSE)
+    ->setDisplayConfigurable('view', FALSE);
+}
+
+/**
+ * Implements hook_entity_insert().
+ */
+function menu_autopilot_entity_insert(EntityInterface $entity) {
+  _menu_autopilot_react($entity);
+}
+
+/**
+ * Implements hook_entity_update().
+ */
+function menu_autopilot_entity_update(EntityInterface $entity) {
+  _menu_autopilot_react($entity);
+}
+
+/**
+ * Implements hook_entity_delete().
+ */
+function menu_autopilot_entity_delete(EntityInterface $entity) {
+  // A deleted node is already gone from storage, so re-syncing any parent that
+  // owned a link for it drops that link. Parent-link deletions need no action.
+  if ($entity instanceof NodeInterface) {
+    _menu_autopilot_react($entity);
+  }
+}
+
+/**
+ * Routes a saved or deleted entity to the sync manager.
+ *
+ * Node changes reconcile every dynamic parent the node can affect; menu-link
+ * changes reconcile that link's own children when it is a dynamic parent. The
+ * sync manager's re-entrancy guard means the child links it writes here do not
+ * trigger a second, nested reconcile.
+ *
+ * @param \Drupal\Core\Entity\EntityInterface $entity
+ *   The entity that was just saved or deleted.
+ */
+function _menu_autopilot_react(EntityInterface $entity) {
+  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+  $sync = \Drupal::service('menu_autopilot.sync_manager');
+  if ($sync->isSyncing()) {
+    return;
+  }
+  if ($entity instanceof NodeInterface) {
+    $sync->syncNode($entity);
+  }
+  elseif ($entity instanceof MenuLinkContentInterface) {
+    $sync->syncParentIfDynamic($entity);
+  }
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter() for menu_link_content_form.
+ *
+ * Adds an "Automatic children" section to the menu link form so an editor can
+ * turn any link into a dynamic parent. The values are persisted onto the
+ * link's `menu_autopilot` base field by _menu_autopilot_link_form_builder().
+ */
+function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStateInterface $form_state, $form_id) {
+  $link = $form_state->getFormObject()->getEntity();
+  if (!$link instanceof MenuLinkContentInterface) {
+    return;
+  }
+  // Never offer the controls on a link the module generates and owns.
+  $data = _menu_autopilot_link_data($link);
+  if (!empty($data['managed'])) {
+    return;
+  }
+  $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
+
+  // Builds a #states 'visible' condition that shows an element when the source
+  // type is any of the given values, e.g. [ [sel=>term], 'or', [sel=>bundle] ].
+  $type_selector = ':input[name="menu_autopilot[source_type]"]';
+  $visible_if = static function (array $types) use ($type_selector): array {
+    $states = [];
+    foreach ($types as $type) {
+      if ($states) {
+        $states[] = 'or';
+      }
+      $states[] = [$type_selector => ['value' => $type]];
+    }
+    return $states;
+  };
+
+  $form['menu_autopilot'] = [
+    '#type' => 'details',
+    '#title' => t('Automatic children'),
+    '#description' => t('Generate this link’s children from published content and keep them in sync automatically.'),
+    '#open' => ($source['type'] ?? 'none') !== 'none',
+    '#tree' => TRUE,
+    '#weight' => 5,
+  ];
+
+  $form['menu_autopilot']['source_type'] = [
+    '#type' => 'select',
+    '#title' => t('Children come from'),
+    '#options' => [
+      'none' => t('Nothing (curated by hand)'),
+      'term' => t('Nodes tagged with a taxonomy term'),
+      'bundle' => t('All nodes of a content type'),
+      'manual' => t('A hand-picked list of nodes'),
+    ],
+    '#default_value' => $source['type'] ?? 'none',
+  ];
+
+  $form['menu_autopilot']['reference_field'] = [
+    '#type' => 'textfield',
+    '#title' => t('Node reference field'),
+    '#description' => t('Machine name of the node field that references the term, e.g. <code>field_solution_type</code>.'),
+    '#default_value' => $source['reference_field'] ?? '',
+    '#states' => ['visible' => $visible_if(['term'])],
+  ];
+
+  $form['menu_autopilot']['term'] = [
+    '#type' => 'entity_autocomplete',
+    '#target_type' => 'taxonomy_term',
+    '#title' => t('Taxonomy term'),
+    '#default_value' => !empty($source['term'])
+      ? \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($source['term'])
+      : NULL,
+    '#states' => ['visible' => $visible_if(['term'])],
+  ];
+
+  $form['menu_autopilot']['bundle'] = [
+    '#type' => 'select',
+    '#title' => t('Content type'),
+    '#description' => t('Required for a content-type source; an optional filter for a term source.'),
+    '#options' => ['' => t('- Any -')] + _menu_autopilot_node_type_options(),
+    '#default_value' => $source['bundle'] ?? '',
+    '#states' => ['visible' => $visible_if(['term', 'bundle'])],
+  ];
+
+  $form['menu_autopilot']['nodes'] = [
+    '#type' => 'entity_autocomplete',
+    '#target_type' => 'node',
+    '#tags' => TRUE,
+    '#title' => t('Nodes'),
+    '#description' => t('The children, in order. Unpublished nodes are skipped.'),
+    '#default_value' => _menu_autopilot_load_nodes($source['nodes'] ?? []),
+    '#states' => ['visible' => $visible_if(['manual'])],
+  ];
+
+  $form['menu_autopilot']['sort'] = [
+    '#type' => 'select',
+    '#title' => t('Sort children by'),
+    '#options' => [
+      'title_asc' => t('Title (A→Z)'),
+      'title_desc' => t('Title (Z→A)'),
+      'created_desc' => t('Newest first'),
+      'created_asc' => t('Oldest first'),
+    ],
+    '#default_value' => $source['sort'] ?? 'title_asc',
+    '#states' => ['visible' => $visible_if(['term', 'bundle'])],
+  ];
+
+  $form['menu_autopilot']['limit'] = [
+    '#type' => 'number',
+    '#title' => t('Maximum children'),
+    '#description' => t('0 for unlimited.'),
+    '#min' => 0,
+    '#default_value' => $source['limit'] ?? 0,
+    '#states' => ['visible' => $visible_if(['term', 'bundle'])],
+  ];
+
+  $form['menu_autopilot']['title_pattern'] = [
+    '#type' => 'textfield',
+    '#title' => t('Child link title'),
+    '#description' => t('Optional token pattern, e.g. <code>[node:title]</code>. Leave blank to use each node’s title.'),
+    '#default_value' => $source['title_pattern'] ?? '',
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+
+  if (\Drupal::moduleHandler()->moduleExists('token')) {
+    $form['menu_autopilot']['token_help'] = [
+      '#theme' => 'token_tree_link',
+      '#token_types' => ['node'],
+      '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+    ];
+  }
+
+  $form['#entity_builders'][] = '_menu_autopilot_link_form_builder';
+}
+
+/**
+ * Entity builder: writes the "Automatic children" values onto the link.
+ *
+ * Runs as the menu link entity is assembled from the submitted form, before it
+ * is saved, so the subsequent entity-save hook sees the new descriptor and
+ * reconciles the children.
+ *
+ * @param string $entity_type_id
+ *   The entity type id ('menu_link_content').
+ * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+ *   The menu link being built.
+ * @param array $form
+ *   The complete form array.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The current form state.
+ */
+function _menu_autopilot_link_form_builder($entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state) {
+  $values = $form_state->getValue('menu_autopilot') ?: [];
+  $type = $values['source_type'] ?? 'none';
+
+  if ($type === 'none') {
+    // Clear any prior descriptor; leaves managed children untouched (they are
+    // not editable through this form).
+    $link->set('menu_autopilot', NULL);
+    return;
+  }
+
+  $source = [
+    'type' => $type,
+    'sort' => $values['sort'] ?? 'title_asc',
+    'limit' => (int) ($values['limit'] ?? 0),
+    'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),
+  ];
+  if ($type === 'term') {
+    $source['reference_field'] = trim((string) ($values['reference_field'] ?? ''));
+    $source['term'] = (int) ($values['term'] ?? 0);
+    $source['bundle'] = (string) ($values['bundle'] ?? '');
+  }
+  elseif ($type === 'bundle') {
+    $source['bundle'] = (string) ($values['bundle'] ?? '');
+  }
+  elseif ($type === 'manual') {
+    $source['nodes'] = array_values(array_map(
+      static fn (array $item): int => (int) $item['target_id'],
+      $values['nodes'] ?? [],
+    ));
+  }
+
+  $link->set('menu_autopilot', ['source' => $source]);
+}
+
+/**
+ * Reads the `menu_autopilot` map value off a menu link.
+ *
+ * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+ *   The menu link.
+ *
+ * @return array
+ *   The stored map, or an empty array.
+ */
+function _menu_autopilot_link_data(MenuLinkContentInterface $link) {
+  if (!$link->hasField('menu_autopilot') || $link->get('menu_autopilot')->isEmpty()) {
+    return [];
+  }
+  $value = $link->get('menu_autopilot')->first()->getValue();
+  return is_array($value) ? $value : [];
+}
+
+/**
+ * Content-type options (machine name => label) for the source form.
+ *
+ * @return array
+ *   Options keyed by node type machine name.
+ */
+function _menu_autopilot_node_type_options() {
+  $options = [];
+  foreach (\Drupal::entityTypeManager()->getStorage('node_type')->loadMultiple() as $type) {
+    $options[$type->id()] = $type->label();
+  }
+  natcasesort($options);
+  return $options;
+}
+
+/**
+ * Loads node entities for an ordered list of ids (for form default values).
+ *
+ * @param array $ids
+ *   Node ids.
+ *
+ * @return \Drupal\node\NodeInterface[]
+ *   The loaded nodes, in the given order, skipping any that no longer exist.
+ */
+function _menu_autopilot_load_nodes(array $ids) {
+  if ($ids === []) {
+    return [];
+  }
+  $storage = \Drupal::entityTypeManager()->getStorage('node');
+  $nodes = [];
+  foreach ($ids as $id) {
+    if ($node = $storage->load($id)) {
+      $nodes[] = $node;
+    }
+  }
+  return $nodes;
+}

@@ -1,0 +1,9 @@
+version: 2
+updates:
+  # NOTE: no `composer` ecosystem. The module's only runtime dependency is
+  # Drupal core, which lives on packages.drupal.org (not Packagist), so
+  # Dependabot cannot resolve it. Core compatibility is managed on drupal.org;
+  # `composer audit` still runs in CI for advisories.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }

@@ -1,0 +1,16 @@
+menu_autopilot.settings:
+  type: config_object
+  label: 'Menu Autopilot settings'
+  mapping:
+    managed_menus:
+      type: sequence
+      label: 'Menus whose links may drive automatic children'
+      sequence:
+        type: string
+        label: 'Menu machine name'
+    default_sort:
+      type: string
+      label: 'Default child sort'
+    default_limit:
+      type: integer
+      label: 'Default child limit (0 = unlimited)'

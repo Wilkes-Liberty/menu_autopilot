@@ -1,0 +1,4 @@
+managed_menus:
+  - main
+default_sort: title_asc
+default_limit: 0

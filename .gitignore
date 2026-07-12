@@ -1,0 +1,10 @@
+vendor/
+node_modules/
+composer.lock
+*.orig
+*.rej
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp

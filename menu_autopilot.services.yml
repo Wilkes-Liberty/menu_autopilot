@@ -1,0 +1,7 @@
+services:
+  menu_autopilot.source_resolver:
+    class: Drupal\menu_autopilot\NavSourceResolver
+    arguments: ['@entity_type.manager']
+  menu_autopilot.sync_manager:
+    class: Drupal\menu_autopilot\NavSyncManager
+    arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token']

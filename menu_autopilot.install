@@ -1,0 +1,46 @@
+<?php
+
+/**
+ * @file
+ * Install, update, and uninstall functions for Menu Autopilot.
+ */
+
+/**
+ * Implements hook_install().
+ *
+ * Installs the `menu_autopilot` base field on menu_link_content. The field is
+ * declared in menu_autopilot_entity_base_field_info(); here we materialise its
+ * storage so it exists in the database.
+ */
+function menu_autopilot_install($is_syncing) {
+  // During a config sync the storage is created from the exported definitions.
+  if ($is_syncing) {
+    return;
+  }
+  $update_manager = \Drupal::entityDefinitionUpdateManager();
+  if (!$update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
+    $update_manager->installFieldStorageDefinition(
+      'menu_autopilot',
+      'menu_link_content',
+      'menu_autopilot',
+      _menu_autopilot_base_field()
+    );
+  }
+}
+
+/**
+ * Implements hook_uninstall().
+ *
+ * Removes the `menu_autopilot` base field. Links the module generated are
+ * ordinary menu_link_content entities and are left in place; only the
+ * bookkeeping field is dropped.
+ */
+function menu_autopilot_uninstall($is_syncing) {
+  if ($is_syncing) {
+    return;
+  }
+  $update_manager = \Drupal::entityDefinitionUpdateManager();
+  if ($definition = $update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
+    $update_manager->uninstallFieldStorageDefinition($definition);
+  }
+}
