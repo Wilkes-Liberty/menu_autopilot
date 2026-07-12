@@ -150,6 +150,9 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     return;
   }
   $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
+  $settings = \Drupal::config('menu_autopilot.settings');
+  $managed_menus = $settings->get('managed_menus') ?: ['main'];
+  $settings_url = Url::fromRoute('menu_autopilot.settings_form')->toString();
 
   // Builds a #states 'visible' condition that shows an element when the source
   // type is any of the given values, e.g. [ [sel=>term], 'or', [sel=>bundle] ].
@@ -165,10 +168,20 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     return $states;
   };
 
+  // Warn when this link's menu is not one Menu Autopilot manages: a descriptor
+  // saved here is stored but never synced until the menu is enabled.
+  $menu_name = $link->getMenuName();
+  if ($menu_name && !in_array($menu_name, $managed_menus, TRUE)) {
+    $description = t('This link’s menu is not enabled for Menu Autopilot, so children configured here will not sync until it is enabled on the <a href=":settings">settings page</a>.', [':settings' => $settings_url]);
+  }
+  else {
+    $description = t('Generate this link’s children from published content and keep them in sync automatically. Only menus enabled on the <a href=":settings">settings page</a> are synced.', [':settings' => $settings_url]);
+  }
+
   $form['menu_autopilot'] = [
     '#type' => 'details',
     '#title' => t('Automatic children'),
-    '#description' => t('Generate this link’s children from published content and keep them in sync automatically.'),
+    '#description' => $description,
     '#open' => ($source['type'] ?? 'none') !== 'none',
     '#tree' => TRUE,
     '#weight' => 5,
@@ -186,10 +199,14 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#default_value' => $source['type'] ?? 'none',
   ];
 
+  $reference_fields = _menu_autopilot_reference_field_options();
   $form['menu_autopilot']['reference_field'] = [
-    '#type' => 'textfield',
-    '#title' => t('Node reference field'),
-    '#description' => t('Machine name of the node field that references the term, e.g. <code>field_solution_type</code>.'),
+    '#type' => 'select',
+    '#title' => t('Term reference field'),
+    '#description' => $reference_fields
+      ? t('The node field that references the term. Only fields that reference taxonomy terms are listed.')
+      : t('No taxonomy reference fields exist on your content types yet. Add an entity reference field that targets taxonomy terms to use this source.'),
+    '#options' => ['' => t('- Select a field -')] + $reference_fields,
     '#default_value' => $source['reference_field'] ?? '',
     '#states' => ['visible' => $visible_if(['term'])],
   ];
@@ -198,6 +215,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#type' => 'entity_autocomplete',
     '#target_type' => 'taxonomy_term',
     '#title' => t('Taxonomy term'),
+    '#description' => t('Children are the published nodes whose reference field points at this term.'),
     '#default_value' => !empty($source['term'])
       ? \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($source['term'])
       : NULL,
@@ -207,7 +225,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   $form['menu_autopilot']['bundle'] = [
     '#type' => 'select',
     '#title' => t('Content type'),
-    '#description' => t('Required for a content-type source; an optional filter for a term source.'),
+    '#description' => t('Required for a content-type source; an optional extra filter for a term source.'),
     '#options' => ['' => t('- Any -')] + _menu_autopilot_node_type_options(),
     '#default_value' => $source['bundle'] ?? '',
     '#states' => ['visible' => $visible_if(['term', 'bundle'])],
@@ -218,7 +236,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#target_type' => 'node',
     '#tags' => TRUE,
     '#title' => t('Nodes'),
-    '#description' => t('The children, in order. Unpublished nodes are skipped.'),
+    '#description' => t('The children, in the order entered. Unpublished nodes are skipped.'),
     '#default_value' => _menu_autopilot_load_nodes($source['nodes'] ?? []),
     '#states' => ['visible' => $visible_if(['manual'])],
   ];
@@ -232,23 +250,23 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
       'created_desc' => t('Newest first'),
       'created_asc' => t('Oldest first'),
     ],
-    '#default_value' => $source['sort'] ?? 'title_asc',
+    '#default_value' => $source['sort'] ?? $settings->get('default_sort') ?? 'title_asc',
     '#states' => ['visible' => $visible_if(['term', 'bundle'])],
   ];
 
   $form['menu_autopilot']['limit'] = [
     '#type' => 'number',
     '#title' => t('Maximum children'),
-    '#description' => t('0 for unlimited.'),
+    '#description' => t('The most children to generate. Use 0 for no limit.'),
     '#min' => 0,
-    '#default_value' => $source['limit'] ?? 0,
+    '#default_value' => $source['limit'] ?? $settings->get('default_limit') ?? 0,
     '#states' => ['visible' => $visible_if(['term', 'bundle'])],
   ];
 
   $form['menu_autopilot']['title_pattern'] = [
     '#type' => 'textfield',
     '#title' => t('Child link title'),
-    '#description' => t('Optional token pattern, e.g. <code>[node:title]</code>. Leave blank to use each node’s title.'),
+    '#description' => t('Optional token pattern, for example <code>[node:title]</code>. Leave blank to use each node’s title.'),
     '#default_value' => $source['title_pattern'] ?? '',
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
@@ -262,6 +280,40 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   }
 
   $form['#entity_builders'][] = '_menu_autopilot_link_form_builder';
+  $form['#validate'][] = '_menu_autopilot_link_form_validate';
+}
+
+/**
+ * Validation handler: enforces the fields each source type needs.
+ *
+ * Runs only against the "Automatic children" values; the standard menu-link
+ * validation is untouched. Errors are attached to the offending element so they
+ * are announced to assistive technology and anchored in the form.
+ */
+function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $form_state) {
+  $values = $form_state->getValue('menu_autopilot') ?: [];
+  switch ($values['source_type'] ?? 'none') {
+    case 'term':
+      if (empty($values['reference_field'])) {
+        $form_state->setError($form['menu_autopilot']['reference_field'], t('Select the node field that references the term.'));
+      }
+      if (empty($values['term'])) {
+        $form_state->setError($form['menu_autopilot']['term'], t('Choose the taxonomy term whose content should appear.'));
+      }
+      break;
+
+    case 'bundle':
+      if (empty($values['bundle'])) {
+        $form_state->setError($form['menu_autopilot']['bundle'], t('Choose the content type whose nodes should appear.'));
+      }
+      break;
+
+    case 'manual':
+      if (empty($values['nodes'])) {
+        $form_state->setError($form['menu_autopilot']['nodes'], t('Add at least one node, or choose a different source.'));
+      }
+      break;
+  }
 }
 
 /**
@@ -342,6 +394,36 @@ function _menu_autopilot_node_type_options() {
   $options = [];
   foreach (\Drupal::entityTypeManager()->getStorage('node_type')->loadMultiple() as $type) {
     $options[$type->id()] = $type->label();
+  }
+  natcasesort($options);
+  return $options;
+}
+
+/**
+ * Node fields that reference taxonomy terms (machine name => label).
+ *
+ * Powers the "Term reference field" select so editors pick from real fields
+ * instead of typing a machine name. Fields are de-duplicated across bundles by
+ * machine name; the label shows both the human label and the machine name.
+ *
+ * @return array
+ *   Options keyed by field machine name.
+ */
+function _menu_autopilot_reference_field_options() {
+  $options = [];
+  $field_manager = \Drupal::service('entity_field.manager');
+  $bundles = array_keys(\Drupal::service('entity_type.bundle.info')->getBundleInfo('node'));
+  foreach ($bundles as $bundle) {
+    foreach ($field_manager->getFieldDefinitions('node', $bundle) as $name => $definition) {
+      if ($definition->getFieldStorageDefinition()->isBaseField()) {
+        continue;
+      }
+      if ($definition->getType() === 'entity_reference'
+        && $definition->getSetting('target_type') === 'taxonomy_term'
+      ) {
+        $options[$name] = $definition->getLabel() . ' (' . $name . ')';
+      }
+    }
   }
   natcasesort($options);
   return $options;
