@@ -144,6 +144,33 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Editorial node link URIs are rewritten to canonical entity references.
+   *
+   * @covers ::normalizeNodeUris
+   */
+  public function testNormalizeNodeUris(): void {
+    $node = $this->createSolution('Governed AI', TRUE);
+    $link = MenuLinkContent::create([
+      'title' => 'Governed AI',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'internal:/node/' . $node->id() . '/latest'],
+    ]);
+    $link->save();
+
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+    $changed = $sync->normalizeNodeUris(['main']);
+
+    $this->assertArrayHasKey((int) $link->id(), $changed);
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $reloaded = $storage->load($link->id());
+    $this->assertSame('entity:node/' . $node->id(), $reloaded->get('link')->first()->uri);
+
+    // Idempotent: a second pass changes nothing.
+    $this->assertSame([], $sync->normalizeNodeUris(['main']));
+  }
+
+  /**
    * Creates the "Platforms" dynamic parent link sourced from the Platform term.
    *
    * @param array $overrides

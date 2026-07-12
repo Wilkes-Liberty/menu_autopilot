@@ -45,4 +45,28 @@ final class MenuAutopilotCommands extends DrushCommands {
     ]));
   }
 
+  /**
+   * Rewrite editorial node link URIs (e.g. /node/12/latest) to clean ones.
+   *
+   * Scans the managed menus and rewrites any link that targets an editorial or
+   * internal node route to a canonical entity:node/<nid> URI, so it resolves to
+   * the node's real path alias instead of 404-ing a decoupled front end. Safe
+   * to run repeatedly; already-canonical links are left untouched.
+   */
+  #[CLI\Command(name: 'menu-autopilot:normalize-uris', aliases: ['ma:fix-uris'])]
+  #[CLI\Usage(name: 'drush menu-autopilot:normalize-uris', description: 'Rewrite editorial node link URIs to canonical entity references.')]
+  public function normalizeUris(): void {
+    $changed = $this->syncManager->normalizeNodeUris();
+    if (!$changed) {
+      $this->logger()->success(dt('Menu Autopilot: all menu links already use canonical node URIs.'));
+      return;
+    }
+    foreach ($changed as $id => $description) {
+      $this->logger()->notice(dt('Link @id: @change', ['@id' => $id, '@change' => $description]));
+    }
+    $this->logger()->success(dt('Menu Autopilot: normalized @count menu link URI(s).', [
+      '@count' => count($changed),
+    ]));
+  }
+
 }

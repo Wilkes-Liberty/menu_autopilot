@@ -30,6 +30,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Saving reconciles immediately so newly managed menus take effect at once.
 - **Drush:** `drush menu-autopilot:rebuild` (alias `ma:rebuild`) reconciles all dynamic
   parents on demand — safe to run repeatedly.
+- **URI normalizer:** `NavSyncManager::normalizeNodeUris()` and
+  `drush menu-autopilot:normalize-uris` (alias `ma:fix-uris`) rewrite hand-made menu
+  links that target an editorial node route (e.g. `/node/12/latest`, `internal:/node/12`)
+  to a canonical `entity:node/<id>` URI, so they resolve to the node's real alias instead
+  of 404-ing a decoupled front end. A one-time cleanup when adopting the module; idempotent.
 - Multilingual-ready storage (a single internal `menu_autopilot` map base field on
   `menu_link_content`; per-language titles use the standard translatable title field).
 - Kernel test coverage for publish→child, unpublish→removal, idempotent reconcile, and
