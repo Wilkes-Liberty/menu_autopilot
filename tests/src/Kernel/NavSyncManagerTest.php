@@ -53,6 +53,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->installEntitySchema('node');
     $this->installEntitySchema('taxonomy_term');
     $this->installEntitySchema('menu_link_content');
+    $this->installSchema('node', ['node_access']);
     $this->installConfig(['system', 'filter', 'node', 'taxonomy']);
 
     NodeType::create(['type' => 'solution', 'name' => 'Solution'])->save();
