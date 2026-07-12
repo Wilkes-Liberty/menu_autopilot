@@ -1,0 +1,5 @@
+menu_autopilot.settings_form:
+  title: 'Menu Autopilot'
+  description: 'Choose which menus have automatic children and set defaults.'
+  route_name: menu_autopilot.settings_form
+  parent: system.admin_structure

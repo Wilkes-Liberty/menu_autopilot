@@ -3,6 +3,7 @@ type: module
 description: 'Automatic, content-driven navigation: curate your top-level menu, then let each item''s children build and maintain themselves from published content (a taxonomy term, a content bundle, or a hand-picked list). Headless-ready — clean canonical URLs, multilingual, cache-tag revalidation — and works with traditional themes too.'
 package: 'Menu'
 core_version_requirement: ^10.3 || ^11
+configure: menu_autopilot.settings_form
 
 # Hard dependencies — APIs we call directly.
 dependencies:

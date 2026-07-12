@@ -1,0 +1,7 @@
+menu_autopilot.settings_form:
+  path: '/admin/structure/menu/autopilot'
+  defaults:
+    _form: 'Drupal\menu_autopilot\Form\MenuAutopilotSettingsForm'
+    _title: 'Menu Autopilot'
+  requirements:
+    _permission: 'administer menu autopilot'

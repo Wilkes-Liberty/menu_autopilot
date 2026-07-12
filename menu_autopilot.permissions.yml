@@ -1,0 +1,4 @@
+administer menu autopilot:
+  title: 'Administer Menu Autopilot'
+  description: 'Choose which menus have automatic children and set the default sort and limit.'
+  restrict access: true
