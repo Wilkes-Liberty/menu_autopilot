@@ -119,6 +119,7 @@ final class NavSyncManager {
    * The menus whose links may drive automatic children.
    *
    * @return string[]
+   *   The configured menu machine names.
    */
   public function managedMenus(): array {
     return $this->configFactory->get('menu_autopilot.settings')->get('managed_menus') ?: ['main'];
@@ -128,6 +129,7 @@ final class NavSyncManager {
    * All dynamic parent links across the managed menus.
    *
    * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   The parent links that have a source descriptor.
    */
   private function findDynamicParents(): array {
     $ids = $this->menuLinkStorage()->getQuery()
@@ -147,6 +149,7 @@ final class NavSyncManager {
    * Managed child links under a parent, keyed by their source node id.
    *
    * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   The managed child links, keyed by source node id.
    */
   private function ownedChildren(MenuLinkContentInterface $parent): array {
     $ids = $this->menuLinkStorage()->getQuery()
@@ -168,11 +171,11 @@ final class NavSyncManager {
    * Whether a node change could add, remove, or update a link under a parent.
    */
   private function parentAffectedByNode(MenuLinkContentInterface $parent, NodeInterface $node): bool {
-    // Already has an owned link here (may need updating or removing)…
+    // The parent already has an owned link (it may need updating or removing).
     if (isset($this->ownedChildren($parent)[(int) $node->id()])) {
       return TRUE;
     }
-    // …or the node newly matches this parent's source.
+    // Otherwise, the node may newly match this parent's source.
     return $this->nodeMatchesSource($node, $this->getSource($parent));
   }
 
@@ -293,6 +296,12 @@ final class NavSyncManager {
     return is_array($value) ? $value : [];
   }
 
+  /**
+   * The menu link content storage handler.
+   *
+   * @return \Drupal\Core\Entity\EntityStorageInterface
+   *   The storage handler.
+   */
   private function menuLinkStorage(): EntityStorageInterface {
     return $this->entityTypeManager->getStorage('menu_link_content');
   }

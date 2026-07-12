@@ -21,7 +21,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lets editors give nav a shorter or decorated label without touching the page title.
   URIs are never tokenized.
 - **Editor UI:** an "Automatic children" section on the menu-link form for choosing the
-  source, sort, limit, and title pattern.
+  source, sort, limit, and title pattern. The term reference field is chosen from a
+  select of discovered taxonomy-reference fields (no machine-name typing); server-side
+  validation reports missing required values as inline, accessible errors; and the
+  section links to the settings page and warns when the link's menu is not managed.
+- **Settings form** at Structure → Menu Autopilot (permission: *Administer Menu
+  Autopilot*) to choose which menus are managed and set the default sort and limit.
+  Saving reconciles immediately so newly managed menus take effect at once.
 - **Drush:** `drush menu-autopilot:rebuild` (alias `ma:rebuild`) reconciles all dynamic
   parents on demand — safe to run repeatedly.
 - Multilingual-ready storage (a single internal `menu_autopilot` map base field on

@@ -30,7 +30,7 @@ final class MenuAutopilotCommands extends DrushCommands {
   }
 
   /**
-   * Reconcile every dynamic parent: create, reorder, rename, and prune children.
+   * Reconcile every dynamic parent: create, reorder, rename, and prune links.
    *
    * Safe to run at any time — it is idempotent, so a second run in a row makes
    * no changes. Useful after a bulk import, after changing a parent's source,
