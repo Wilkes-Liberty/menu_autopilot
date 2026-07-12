@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Base field now installs when the module is enabled via configuration import.**
+  `hook_install()` previously bailed out when `$is_syncing` was TRUE, so enabling the
+  module through `drush config:import` or `site install --existing-config` skipped
+  installing the `menu_autopilot` map field storage — leaving the field defined but with
+  no database column, which errored at runtime. The base field is code-defined (not
+  exported config), so its storage must be installed on every enable path; the guard is
+  removed. The install remains idempotent.
+
 ### Added
 - Initial release: hybrid navigation for Drupal — curated top-level menu links whose
   children are generated from published content and kept in sync automatically.

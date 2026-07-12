@@ -9,14 +9,15 @@
  * Implements hook_install().
  *
  * Installs the `menu_autopilot` base field on menu_link_content. The field is
- * declared in menu_autopilot_entity_base_field_info(); here we materialise its
- * storage so it exists in the database.
+ * declared in menu_autopilot_entity_base_field_info() (code, not exported
+ * config), so nothing else creates its storage — the install must run on every
+ * path: a normal `drush en`, a config import that enables the module, and a
+ * site install from existing config. It therefore does NOT bail out when
+ * `$is_syncing` is TRUE (that guard is for modules that create config entities
+ * a sync would recreate; a base field is not config). Idempotent: skipped when
+ * the storage already exists.
  */
 function menu_autopilot_install($is_syncing) {
-  // During a config sync the storage is created from the exported definitions.
-  if ($is_syncing) {
-    return;
-  }
   $update_manager = \Drupal::entityDefinitionUpdateManager();
   if (!$update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
     $update_manager->installFieldStorageDefinition(
@@ -33,12 +34,10 @@ function menu_autopilot_install($is_syncing) {
  *
  * Removes the `menu_autopilot` base field. Links the module generated are
  * ordinary menu_link_content entities and are left in place; only the
- * bookkeeping field is dropped.
+ * bookkeeping field is dropped. Runs on every uninstall path for the same
+ * reason install does — the storage is code-defined, not config.
  */
 function menu_autopilot_uninstall($is_syncing) {
-  if ($is_syncing) {
-    return;
-  }
   $update_manager = \Drupal::entityDefinitionUpdateManager();
   if ($definition = $update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
     $update_manager->uninstallFieldStorageDefinition($definition);
