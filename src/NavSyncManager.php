@@ -140,23 +140,27 @@ final class NavSyncManager {
       ->execute();
 
     $changed = [];
+    $was_syncing = $this->syncing;
     $this->syncing = TRUE;
     try {
       foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
         if ($link->get('link')->isEmpty()) {
           continue;
         }
-        $uri = (string) $link->get('link')->first()->uri;
+        $item = $link->get('link')->first();
+        $uri = (string) $item->uri;
         $canonical = $this->canonicalNodeUri($uri);
         if ($canonical !== NULL && $canonical !== $uri) {
-          $link->set('link', ['uri' => $canonical]);
+          $value = $item->getValue();
+          $value['uri'] = $canonical;
+          $link->set('link', $value);
           $link->save();
           $changed[(int) $link->id()] = $uri . ' → ' . $canonical;
         }
       }
     }
     finally {
-      $this->syncing = FALSE;
+      $this->syncing = $was_syncing;
     }
     return $changed;
   }
