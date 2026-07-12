@@ -34,6 +34,8 @@ function menu_autopilot_help($route_name, RouteMatchInterface $route_match) {
     $output = '';
     $output .= '<h2>' . t('About') . '</h2>';
     $output .= '<p>' . t('Menu Autopilot brings hybrid navigation to Drupal: editors curate the top level of a menu by hand, while the children of chosen parents are generated from published content and kept in sync automatically. It is to navigation what Pathauto is to URL aliases.') . '</p>';
+    $output .= '<h2>' . t('Choosing which menus are managed') . '</h2>';
+    $output .= '<p>' . t('On the <a href=":settings">Menu Autopilot settings</a> page, enable the menus that may have automatic children (the main menu is enabled by default) and set the default sort and limit for new dynamic parents.', [':settings' => Url::fromRoute('menu_autopilot.settings_form')->toString()]) . '</p>';
     $output .= '<h2>' . t('Marking a parent dynamic') . '</h2>';
     $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Children are created, reordered, renamed, and removed as content is published, updated, and unpublished — you never hand-place them.') . '</p>';
     $output .= '<h2>' . t('Clean URLs') . '</h2>';
