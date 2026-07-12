@@ -116,6 +116,68 @@ final class NavSyncManager {
   }
 
   /**
+   * Rewrite editorial node link URIs to canonical entity references.
+   *
+   * A menu link stored as an editorial or internal node route — for example
+   * `/node/12/latest`, `internal:/node/12`, or `entity:node/12/latest` — has no
+   * path alias, so a decoupled front end resolves it verbatim and 404s. This
+   * rewrites every such link (across the given menus, or the managed menus by
+   * default) to `entity:node/<nid>`, which resolves to the node's real alias.
+   * It touches any matching link, not just the ones this module manages, so it
+   * doubles as a one-time cleanup when adopting the module. Idempotent: links
+   * already canonical are left untouched.
+   *
+   * @param string[]|null $menu_names
+   *   The menus to scan, or NULL for the managed menus.
+   *
+   * @return array<int,string>
+   *   Changed links keyed by id, valued "old-uri → new-uri".
+   */
+  public function normalizeNodeUris(?array $menu_names = NULL): array {
+    $ids = $this->menuLinkStorage()->getQuery()
+      ->condition('menu_name', $menu_names ?: $this->managedMenus(), 'IN')
+      ->accessCheck(FALSE)
+      ->execute();
+
+    $changed = [];
+    $this->syncing = TRUE;
+    try {
+      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+        if ($link->get('link')->isEmpty()) {
+          continue;
+        }
+        $uri = (string) $link->get('link')->first()->uri;
+        $canonical = $this->canonicalNodeUri($uri);
+        if ($canonical !== NULL && $canonical !== $uri) {
+          $link->set('link', ['uri' => $canonical]);
+          $link->save();
+          $changed[(int) $link->id()] = $uri . ' → ' . $canonical;
+        }
+      }
+    }
+    finally {
+      $this->syncing = FALSE;
+    }
+    return $changed;
+  }
+
+  /**
+   * The canonical `entity:node/<nid>` form of a node link URI, if it is one.
+   *
+   * @param string $uri
+   *   The stored link URI.
+   *
+   * @return string|null
+   *   The canonical URI, or NULL when the URI does not target a node.
+   */
+  private function canonicalNodeUri(string $uri): ?string {
+    if (preg_match('#^(?:entity:|internal:|base:)?/?node/(\d+)(?![0-9])#', $uri, $matches)) {
+      return 'entity:node/' . $matches[1];
+    }
+    return NULL;
+  }
+
+  /**
    * The menus whose links may drive automatic children.
    *
    * @return string[]
