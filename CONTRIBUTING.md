@@ -17,14 +17,14 @@ package; you do not need to interact with it to contribute.
 
 ## Branches
 
-- `1.0.x` is the active development and release branch.
-- Branch your work off `1.0.x` with a short, descriptive name:
+- `1.x` is the active development and release branch.
+- Branch your work off `1.x` with a short, descriptive name:
   `feature/<slug>`, `fix/<slug>`, or `chore/<slug>` (lowercase, hyphenated).
-- Open your pull request against `1.0.x`.
+- Open your pull request against `1.x`.
 
 ## Making a change
 
-1. Fork and branch off `1.0.x`.
+1. Fork and branch off `1.x`.
 2. Make your change, following Drupal coding standards (see below).
 3. Add or update tests for any behavior change.
 4. Add an entry under `## [Unreleased]` in `CHANGELOG.md` (a CI check enforces this;
