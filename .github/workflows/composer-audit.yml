@@ -1,7 +1,7 @@
 name: composer audit
 on:
   pull_request: { branches: ['**'] }
-  push: { branches: ['1.0.x'] }
+  push: { branches: ['1.x'] }
 permissions:
   contents: read
 jobs:

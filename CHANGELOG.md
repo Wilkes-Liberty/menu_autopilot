@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Development branch is now `1.x`, not `1.0.x`.** A `1.x` branch ships every 1.y release
+  from one line; `1.0.x` is patch-only for the 1.0 series. Track dev with
+  `composer require 'drupal/menu_autopilot:1.x-dev'`. This standardizes the branch model
+  across the W&L drupal.org modules.
+
 ### Fixed
 - **Base field now installs when the module is enabled via configuration import.**
   `hook_install()` previously bailed out when `$is_syncing` was TRUE, so enabling the
