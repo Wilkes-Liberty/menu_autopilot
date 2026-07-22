@@ -6,20 +6,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Changed
-- **Development branch is now `1.x`, not `1.0.x`.** A `1.x` branch ships every 1.y release
-  from one line; `1.0.x` is patch-only for the 1.0 series. Track dev with
-  `composer require 'drupal/menu_autopilot:1.x-dev'`. This standardizes the branch model
-  across the W&L drupal.org modules.
-
-### Fixed
-- **Base field now installs when the module is enabled via configuration import.**
-  `hook_install()` previously bailed out when `$is_syncing` was TRUE, so enabling the
-  module through `drush config:import` or `site install --existing-config` skipped
-  installing the `menu_autopilot` map field storage — leaving the field defined but with
-  no database column, which errored at runtime. The base field is code-defined (not
-  exported config), so its storage must be installed on every enable path; the guard is
-  removed. The install remains idempotent.
+## [1.0.0-rc1] — 2026-07-21
 
 ### Added
 - Initial release: hybrid navigation for Drupal — curated top-level menu links whose
@@ -54,3 +41,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `menu_link_content`; per-language titles use the standard translatable title field).
 - Kernel test coverage for publish→child, unpublish→removal, idempotent reconcile, and
   token titles.
+
+### Changed
+- **Development branch is now `1.x`, not `1.0.x`.** A `1.x` branch ships every 1.y release
+  from one line; `1.0.x` is patch-only for the 1.0 series. Track dev with
+  `composer require 'drupal/menu_autopilot:1.x-dev'`. This standardizes the branch model
+  across the W&L drupal.org modules.
+
+### Fixed
+- **Base field now installs when the module is enabled via configuration import.**
+  `hook_install()` previously bailed out when `$is_syncing` was TRUE, so enabling the
+  module through `drush config:import` or `site install --existing-config` skipped
+  installing the `menu_autopilot` map field storage — leaving the field defined but with
+  no database column, which errored at runtime. The base field is code-defined (not
+  exported config), so its storage must be installed on every enable path; the guard is
+  removed. The install remains idempotent.
