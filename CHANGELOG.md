@@ -6,8 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] — TBD
+
+### Changed
+- Narrowed `core_version_requirement` to the oldest supported Drupal branches
+  (`^10.6 || ^11.3`). The previous `^10.3 || ^11` claimed support for minor versions that
+  are end-of-life upstream and were never exercised by CI. The floor now tracks the oldest
+  branch still receiving upstream support.
+
+### CI
+- Added test legs for the supported floor: the suite runs against the previous major
+  (10.6) and previous minor (11.3), so the version claim is verified rather than asserted.
+
 ### Documentation
-- Install command shows the `^1.0.0-rc1` constraint so it works on projects with default (stable) minimum-stability while only the RC is released.
+- Install command shows the `^1.0.0-rc1` constraint so it works on projects with default
+  (stable) minimum-stability while only the RC is released. Update to `^1.0` at the stable
+  publish.
 
 ## [1.0.0-rc1] — 2026-07-21
 

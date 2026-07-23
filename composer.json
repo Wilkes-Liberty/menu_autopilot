@@ -20,7 +20,7 @@
         "source": "https://github.com/Wilkes-Liberty/menu_autopilot"
     },
     "require": {
-        "drupal/core": "^10.3 || ^11"
+        "drupal/core": "^10.6 || ^11.3"
     },
     "suggest": {
         "drupal/token": "Adds the token browser UI and extra tokens for the child link title pattern."

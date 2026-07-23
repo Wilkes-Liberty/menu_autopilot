@@ -16,3 +16,10 @@ include:
 variables:
   _GITLAB_TEMPLATES_REPO: project/gitlab_templates
   _GITLAB_TEMPLATES_REF: main
+  # Test the supported floor, not just the default core. PREVIOUS_MAJOR runs the
+  # newest 10.x that satisfies core_version_requirement (10.6, our D10 floor);
+  # PREVIOUS_MINOR runs the prior minor of the current major (11.3, our D11 floor).
+  # NEXT_MINOR gives a forward-compat signal on the upcoming minor.
+  OPT_IN_TEST_PREVIOUS_MAJOR: '1'
+  OPT_IN_TEST_PREVIOUS_MINOR: '1'
+  OPT_IN_TEST_NEXT_MINOR: '1'

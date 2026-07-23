@@ -55,7 +55,7 @@ no schema to teach your GraphQL/JSON:API layer.
 
 ## Requirements
 
-- Drupal 10.3+ / 11
+- Drupal 10.6+ / 11.3+
 - Core `menu_link_content` and `node`
 - Suggested: [Token](https://www.drupal.org/project/token) — adds the token browser UI and extra
   tokens for the child-label pattern (core's token service handles `[node:*]` without it).
