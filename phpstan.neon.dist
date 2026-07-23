@@ -10,7 +10,9 @@ parameters:
   paths:
     - .
   excludePaths:
-    - vendor
+    # Optional (?): there is no vendor/ under the module in DrupalCI, where the
+    # module is analysed in place; the marker stops PHPStan erroring when it is absent.
+    - vendor (?)
   fileExtensions:
     - php
     - module
