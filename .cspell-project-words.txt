@@ -1,0 +1,8 @@
+# Project-specific words allowed by the cspell CI job.
+# One word per line; blank lines and lines starting with # are ignored.
+# https://project.pages.drupalcode.org/gitlab_templates/jobs/cspell/
+behaviour
+Cerda
+drupalcode
+entrancy
+recognise
