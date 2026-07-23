@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-07-23
+
 ### Fixed
 - The settings form no longer declares its injected services as `readonly`. On PHP < 8.4 —
   within the supported range, since Drupal 10.6 runs on PHP 8.1+ — a `readonly` property on a
