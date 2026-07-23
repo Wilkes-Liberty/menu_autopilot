@@ -90,7 +90,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertCount(1, $children, 'A child link is created for the published node.');
     $child = reset($children);
     $this->assertSame('Governed AI', $child->getTitle());
-    $this->assertSame('entity:node/' . $node->id(), $child->get('link')->first()->uri, 'The child stores a canonical node URI, never an editorial path.');
+    $this->assertSame('entity:node/' . $node->id(), $child->get('link')->first()->getValue()['uri'], 'The child stores a canonical node URI, never an editorial path.');
 
     $node->setUnpublished()->save();
     $this->assertCount(0, $this->childrenOf($parent), 'Unpublishing the node removes its child link.');
@@ -164,7 +164,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertArrayHasKey((int) $link->id(), $changed);
     $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
     $reloaded = $storage->load($link->id());
-    $this->assertSame('entity:node/' . $node->id(), $reloaded->get('link')->first()->uri);
+    $this->assertSame('entity:node/' . $node->id(), $reloaded->get('link')->first()->getValue()['uri']);
 
     // Idempotent: a second pass changes nothing.
     $this->assertSame([], $sync->normalizeNodeUris(['main']));

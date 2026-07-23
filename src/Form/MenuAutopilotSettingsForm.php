@@ -20,8 +20,8 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
   public function __construct(
     ConfigFactoryInterface $config_factory,
     TypedConfigManagerInterface $typed_config_manager,
-    protected readonly EntityTypeManagerInterface $entityTypeManager,
-    protected readonly NavSyncManager $syncManager,
+    protected EntityTypeManagerInterface $entityTypeManager,
+    protected NavSyncManager $syncManager,
   ) {
     parent::__construct($config_factory, $typed_config_manager);
   }
