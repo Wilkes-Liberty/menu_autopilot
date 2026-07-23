@@ -6,7 +6,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [1.0.0] — TBD
+## [1.0.0] — 2026-07-23
+
+First stable release.
 
 ### Changed
 - Narrowed `core_version_requirement` to the oldest supported Drupal branches
@@ -19,9 +21,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (10.6) and previous minor (11.3), so the version claim is verified rather than asserted.
 
 ### Documentation
-- Install command shows the `^1.0.0-rc1` constraint so it works on projects with default
-  (stable) minimum-stability while only the RC is released. Update to `^1.0` at the stable
-  publish.
+- Install command uses the stable `^1.0` constraint now that 1.0.0 is released.
 
 ## [1.0.0-rc1] — 2026-07-21
 
