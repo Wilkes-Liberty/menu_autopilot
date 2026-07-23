@@ -17,7 +17,7 @@
  * a sync would recreate; a base field is not config). Idempotent: skipped when
  * the storage already exists.
  */
-function menu_autopilot_install($is_syncing) {
+function menu_autopilot_install(bool $is_syncing): void {
   $update_manager = \Drupal::entityDefinitionUpdateManager();
   if (!$update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
     $update_manager->installFieldStorageDefinition(
@@ -37,7 +37,7 @@ function menu_autopilot_install($is_syncing) {
  * bookkeeping field is dropped. Runs on every uninstall path for the same
  * reason install does — the storage is code-defined, not config.
  */
-function menu_autopilot_uninstall($is_syncing) {
+function menu_autopilot_uninstall(bool $is_syncing): void {
   $update_manager = \Drupal::entityDefinitionUpdateManager();
   if ($definition = $update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
     $update_manager->uninstallFieldStorageDefinition($definition);

@@ -144,14 +144,17 @@ final class NavSyncManager {
     $this->syncing = TRUE;
     try {
       foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-        if ($link->get('link')->isEmpty()) {
+        if (!$link instanceof MenuLinkContentInterface) {
           continue;
         }
         $item = $link->get('link')->first();
-        $uri = (string) $item->uri;
+        if ($item === NULL) {
+          continue;
+        }
+        $value = $item->getValue();
+        $uri = (string) ($value['uri'] ?? '');
         $canonical = $this->canonicalNodeUri($uri);
         if ($canonical !== NULL && $canonical !== $uri) {
-          $value = $item->getValue();
           $value['uri'] = $canonical;
           $link->set('link', $value);
           $link->save();
@@ -204,6 +207,9 @@ final class NavSyncManager {
       ->execute();
     $parents = [];
     foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+      if (!$link instanceof MenuLinkContentInterface) {
+        continue;
+      }
       if (!$this->isManaged($link) && ($this->getSource($link)['type'] ?? 'none') !== 'none') {
         $parents[] = $link;
       }
@@ -225,6 +231,9 @@ final class NavSyncManager {
       ->execute();
     $children = [];
     foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+      if (!$link instanceof MenuLinkContentInterface) {
+        continue;
+      }
       $data = $this->getData($link);
       if (!empty($data['managed']) && !empty($data['node'])) {
         $children[(int) $data['node']] = $link;
@@ -303,7 +312,8 @@ final class NavSyncManager {
       $changed = TRUE;
     }
     $uri = 'entity:node/' . $node->id();
-    $current = $link->get('link')->isEmpty() ? NULL : $link->get('link')->first()->uri;
+    $link_item = $link->get('link')->first();
+    $current = $link_item !== NULL ? ($link_item->getValue()['uri'] ?? NULL) : NULL;
     if ($current !== $uri) {
       $link->set('link', ['uri' => $uri]);
       $changed = TRUE;

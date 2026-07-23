@@ -18,6 +18,7 @@
  */
 
 use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Entity\EntityFormInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\EntityTypeInterface;
 use Drupal\Core\Form\FormStateInterface;
@@ -29,7 +30,7 @@ use Drupal\node\NodeInterface;
 /**
  * Implements hook_help().
  */
-function menu_autopilot_help($route_name, RouteMatchInterface $route_match) {
+function menu_autopilot_help(string $route_name, RouteMatchInterface $route_match): ?string {
   if ($route_name === 'help.page.menu_autopilot') {
     $output = '';
     $output .= '<h2>' . t('About') . '</h2>';
@@ -56,7 +57,7 @@ function menu_autopilot_help($route_name, RouteMatchInterface $route_match) {
  * this data; it is installed by menu_autopilot_install() via the entity
  * definition update manager.
  */
-function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type) {
+function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type): array {
   if ($entity_type->id() === 'menu_link_content') {
     return ['menu_autopilot' => _menu_autopilot_base_field()];
   }
@@ -85,21 +86,21 @@ function _menu_autopilot_base_field() {
 /**
  * Implements hook_entity_insert().
  */
-function menu_autopilot_entity_insert(EntityInterface $entity) {
+function menu_autopilot_entity_insert(EntityInterface $entity): void {
   _menu_autopilot_react($entity);
 }
 
 /**
  * Implements hook_entity_update().
  */
-function menu_autopilot_entity_update(EntityInterface $entity) {
+function menu_autopilot_entity_update(EntityInterface $entity): void {
   _menu_autopilot_react($entity);
 }
 
 /**
  * Implements hook_entity_delete().
  */
-function menu_autopilot_entity_delete(EntityInterface $entity) {
+function menu_autopilot_entity_delete(EntityInterface $entity): void {
   // A deleted node is already gone from storage, so re-syncing any parent that
   // owned a link for it drops that link. Parent-link deletions need no action.
   if ($entity instanceof NodeInterface) {
@@ -118,7 +119,7 @@ function menu_autopilot_entity_delete(EntityInterface $entity) {
  * @param \Drupal\Core\Entity\EntityInterface $entity
  *   The entity that was just saved or deleted.
  */
-function _menu_autopilot_react(EntityInterface $entity) {
+function _menu_autopilot_react(EntityInterface $entity): void {
   /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
   $sync = \Drupal::service('menu_autopilot.sync_manager');
   if ($sync->isSyncing()) {
@@ -139,8 +140,9 @@ function _menu_autopilot_react(EntityInterface $entity) {
  * turn any link into a dynamic parent. The values are persisted onto the
  * link's `menu_autopilot` base field by _menu_autopilot_link_form_builder().
  */
-function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStateInterface $form_state, $form_id) {
-  $link = $form_state->getFormObject()->getEntity();
+function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  $form_object = $form_state->getFormObject();
+  $link = $form_object instanceof EntityFormInterface ? $form_object->getEntity() : NULL;
   if (!$link instanceof MenuLinkContentInterface) {
     return;
   }
@@ -290,7 +292,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
  * validation is untouched. Errors are attached to the offending element so they
  * are announced to assistive technology and anchored in the form.
  */
-function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $form_state) {
+function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $form_state): void {
   $values = $form_state->getValue('menu_autopilot') ?: [];
   switch ($values['source_type'] ?? 'none') {
     case 'term':
@@ -332,7 +334,7 @@ function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $fo
  * @param \Drupal\Core\Form\FormStateInterface $form_state
  *   The current form state.
  */
-function _menu_autopilot_link_form_builder($entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state) {
+function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state): void {
   $values = $form_state->getValue('menu_autopilot') ?: [];
   $type = $values['source_type'] ?? 'none';
 

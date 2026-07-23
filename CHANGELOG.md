@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- The settings form no longer declares its injected services as `readonly`. On PHP < 8.4 —
+  within the supported range, since Drupal 10.6 runs on PHP 8.1+ — a `readonly` property on a
+  form object is fatal when Drupal rebuilds the form from its cache
+  (`DependencySerializationTrait::__wakeup()` cannot reinitialize it).
+
+### Changed
+- Added complete type declarations across the module (hook return and parameter types, entity
+  type narrowing in `NavSyncManager`) so it passes PHPStan level 6 with no errors.
+
 ## [1.0.0] — 2026-07-23
 
 First stable release.
