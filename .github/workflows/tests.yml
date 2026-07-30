@@ -260,8 +260,15 @@ jobs:
         run: |
           composer require -W --no-interaction --no-progress \
             "drupal/menu_autopilot:*@dev"
+          # drush is required, not optional: the module ships Drush commands
+          # under src/Drush/Commands, and without it phpstan cannot resolve
+          # Drush\Attributes\Command, DrushCommands::logger() or dt() — 15
+          # errors that say nothing about this module's code. The drupalcode
+          # phpstan job has drush in its environment, so leaving it out here
+          # made the two venues disagree about a module that had not changed.
           composer require -W --dev --no-interaction --no-progress \
             "drupal/core-dev:^11" \
+            "drush/drush:^13" \
             "phpstan/phpstan:^2" \
             "phpstan/extension-installer:^1.4" \
             "mglaman/phpstan-drupal:^2" \
