@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **A GitHub Actions test workflow.** GitHub ran no tests for this module at all — only
+  changelog, composer-audit and dependabot-automerge — so the drupalcode pipeline was the
+  only venue that could see a regression, and a PR here could go green, merge and ship
+  while the suite was broken.
+
+  `tests.yml` runs PHPUnit across the declared support range (`~10.6.0` on PHP 8.3 with
+  PHPUnit 9.6, `~11.3.0` on PHP 8.3, `^11` on PHP 8.4), plus phpcs and phpstan against the
+  module's own `phpcs.xml.dist` and `phpstan.neon.dist`, so the two venues check the same
+  rulesets rather than two similar ones.
+
+  Three things it deliberately does, each because the alternative has misled us before. It
+  asserts the *resolved* core version matches the leg's name, because `^11.3` resolves to
+  11.4 and a floor leg built that way silently retests the ceiling. It asserts a minimum
+  test count rather than trusting the exit status, because an exit code says the tests that
+  ran passed and cannot say which ran. And it discovers test directories rather than listing
+  them, so a future submodule is covered without anyone remembering this file.
+
 ## [1.0.1] — 2026-07-23
 
 ### Fixed
