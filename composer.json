@@ -20,6 +20,7 @@
         "source": "https://github.com/Wilkes-Liberty/menu_autopilot"
     },
     "require": {
+        "php": ">=8.1",
         "drupal/core": "^10.6 || ^11.3"
     },
     "suggest": {
