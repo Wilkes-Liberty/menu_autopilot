@@ -12,11 +12,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drop-in). Covers server-side paths that local hooks cannot see.
 
 ### Fixed
-- **CI: the attribution gate no longer fails on clean commits.** The checker
+- **CI: the attribution gate no longer fails on clean commits.** The stripper
   compared each commit message against a copy that had gained a trailing newline,
   so every commit looked modified and the run ended with `strip count > 0 but tip
-  unchanged`. Merge commits are now scanned, and the robot-emoji rule matches a
-  marker line rather than the character anywhere in the message.
+  unchanged`.
 
 
 ## [1.0.2] — 2026-07-30
