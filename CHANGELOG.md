@@ -11,6 +11,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   PR title, or the PR body credit AI with authorship (shared Wilkes & Liberty
   drop-in). Covers server-side paths that local hooks cannot see.
 
+### Changed
+- **CI: the attribution gate reads its scripts from the base commit.** A
+  pull request can no longer supply the code that decides whether it passes.
+
 ### Fixed
 - **CI: the attribution gate no longer fails on clean commits.** The stripper
   compared each commit message against a copy that had gained a trailing newline,
