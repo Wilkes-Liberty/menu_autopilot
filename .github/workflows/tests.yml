@@ -81,7 +81,18 @@ jobs:
         env:
           DRUPAL_CONSTRAINT: ${{ matrix.constraint }}
         run: |
-          composer create-project "drupal/recommended-project:${DRUPAL_CONSTRAINT}" drupal \
+          retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              if [ "$n" -lt 3 ]; then
+                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
+                sleep $((15 * n))
+              fi
+            done
+            return 1
+          }
+          retry composer create-project "drupal/recommended-project:${DRUPAL_CONSTRAINT}" drupal \
             --no-interaction --no-install --no-progress
           cd drupal
           composer config --no-plugins allow-plugins.composer/installers true
@@ -98,12 +109,23 @@ jobs:
           DRUPAL_CONSTRAINT: ${{ matrix.constraint }}
           PHPUNIT_VERSION: ${{ matrix.phpunit }}
         run: |
+          retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              if [ "$n" -lt 3 ]; then
+                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
+                sleep $((15 * n))
+              fi
+            done
+            return 1
+          }
           # -W (--with-all-dependencies): recommended-project ships a
           # composer.lock, so each require is a *partial* update and composer
           # refuses to move the transitive packages the lock pins. -W lets it.
-          composer require -W --no-interaction --no-progress \
+          retry composer require -W --no-interaction --no-progress \
             "drupal/menu_autopilot:*@dev"
-          composer require -W --dev --no-interaction --no-progress \
+          retry composer require -W --dev --no-interaction --no-progress \
             "drupal/core-dev:${DRUPAL_CONSTRAINT}" \
             "phpunit/phpunit:${PHPUNIT_VERSION}"
 
@@ -245,7 +267,18 @@ jobs:
       # errors and tells you nothing about the module.
       - name: Scaffold a Drupal site
         run: |
-          composer create-project "drupal/recommended-project:^11" drupal \
+          retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              if [ "$n" -lt 3 ]; then
+                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
+                sleep $((15 * n))
+              fi
+            done
+            return 1
+          }
+          retry composer create-project "drupal/recommended-project:^11" drupal \
             --no-interaction --no-install --no-progress
           cd drupal
           composer config --no-plugins allow-plugins.composer/installers true
@@ -258,7 +291,18 @@ jobs:
       - name: Install dependencies
         working-directory: drupal
         run: |
-          composer require -W --no-interaction --no-progress \
+          retry() {
+            local n
+            for n in 1 2 3; do
+              "$@" && return 0
+              if [ "$n" -lt 3 ]; then
+                echo "::warning::attempt $n of 3 failed: $1 $2 - retrying"
+                sleep $((15 * n))
+              fi
+            done
+            return 1
+          }
+          retry composer require -W --no-interaction --no-progress \
             "drupal/menu_autopilot:*@dev"
           # drush is required, not optional: the module ships Drush commands
           # under src/Drush/Commands, and without it phpstan cannot resolve
@@ -266,7 +310,7 @@ jobs:
           # errors that say nothing about this module's code. The drupalcode
           # phpstan job has drush in its environment, so leaving it out here
           # made the two venues disagree about a module that had not changed.
-          composer require -W --dev --no-interaction --no-progress \
+          retry composer require -W --dev --no-interaction --no-progress \
             "drupal/core-dev:^11" \
             "drush/drush:^13" \
             "phpstan/phpstan:^2" \
