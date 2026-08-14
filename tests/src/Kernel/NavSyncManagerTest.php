@@ -11,6 +11,7 @@ use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
 use Drupal\node\Entity\NodeType;
+use Drupal\path_alias\Entity\PathAlias;
 use Drupal\taxonomy\Entity\Term;
 use Drupal\taxonomy\Entity\Vocabulary;
 
@@ -35,6 +36,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     'taxonomy',
     'link',
     'menu_link_content',
+    'path_alias',
     'menu_autopilot',
   ];
 
@@ -53,6 +55,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->installEntitySchema('node');
     $this->installEntitySchema('taxonomy_term');
     $this->installEntitySchema('menu_link_content');
+    $this->installEntitySchema('path_alias');
     $this->installSchema('node', ['node_access']);
     $this->installConfig(['system', 'filter', 'node', 'taxonomy']);
 
@@ -351,6 +354,150 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Adopt-and-prune keeps matching ids and drops curated extras.
+   *
+   * @covers ::syncParent
+   */
+  public function testAdoptPruneRemovesExtrasKeepsMatchingIds(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $atlas = $this->createSolution('Atlas', TRUE);
+    $unrelated = Node::create([
+      'type' => 'solution',
+      'title' => 'Curated extra',
+      'status' => 1,
+    ]);
+    $unrelated->save();
+
+    $existing_atlas = MenuLinkContent::create([
+      'title' => 'Atlas (hand)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $atlas->id()],
+    ]);
+    $existing_atlas->save();
+    $existing_extra = MenuLinkContent::create([
+      'title' => 'Curated extra',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unrelated->id()],
+    ]);
+    $existing_extra->save();
+
+    $this->enableAutomaticChildren($parent, 'adopt_prune');
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children);
+    $this->assertArrayHasKey((int) $existing_atlas->id(), $children);
+    $this->assertArrayNotHasKey((int) $existing_extra->id(), $children);
+    $this->assertTrue($this->isManagedLink($children[(int) $existing_atlas->id()]));
+  }
+
+  /**
+   * Reparenting moves a sibling match under the parent, then adopts it.
+   *
+   * @covers ::syncParent
+   */
+  public function testReparentMovesSiblingThenAdopts(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $helios = $this->createSolution('Helios', TRUE);
+    $sibling = MenuLinkContent::create([
+      'title' => 'Helios (top-level)',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'entity:node/' . $helios->id()],
+    ]);
+    $sibling->save();
+
+    $this->enableAutomaticChildren($parent, 'adopt', TRUE);
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children);
+    $this->assertArrayHasKey((int) $sibling->id(), $children);
+    $this->assertTrue($this->isManagedLink($children[(int) $sibling->id()]));
+    $this->assertSame(
+      'menu_link_content:' . $parent->uuid(),
+      $children[(int) $sibling->id()]->getParentId(),
+    );
+  }
+
+  /**
+   * Another automatic parent keeps its matching children.
+   *
+   * @covers ::syncParent
+   */
+  public function testReparentDoesNotStealFromAnotherDynamicParent(): void {
+    $other = $this->createDynamicParent();
+    $this->createSolution('Helios', TRUE);
+    $other_children = $this->childrenOf($other);
+    $this->assertCount(1, $other_children);
+    $owned = reset($other_children);
+
+    $parent = MenuLinkContent::create([
+      'title' => 'Also platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+    $this->enableAutomaticChildren($parent, 'adopt', TRUE);
+
+    $this->assertSame(
+      'menu_link_content:' . $other->uuid(),
+      $this->reloadLink((int) $owned->id())->getParentId(),
+    );
+    $this->assertArrayNotHasKey((int) $owned->id(), $this->childrenOf($parent));
+  }
+
+  /**
+   * A child stored as a path alias is treated as the same node.
+   *
+   * @covers ::syncParent
+   */
+  public function testAliasUriIsTreatedAsMatchingNode(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $helios = $this->createSolution('Helios', TRUE);
+    PathAlias::create([
+      'path' => '/node/' . $helios->id(),
+      'alias' => '/platforms/helios',
+    ])->save();
+
+    $existing = MenuLinkContent::create([
+      'title' => 'Helios (alias)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'internal:/platforms/helios'],
+    ]);
+    $existing->save();
+
+    $this->enableAutomaticChildren($parent);
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children);
+    $this->assertArrayHasKey((int) $existing->id(), $children);
+    $this->assertTrue($this->isManagedLink($children[(int) $existing->id()]));
+    $this->assertSame(
+      'entity:node/' . $helios->id(),
+      $children[(int) $existing->id()]->get('link')->first()->getValue()['uri'],
+    );
+  }
+
+  /**
    * Editorial node link URIs are rewritten to canonical entity references.
    *
    * @covers ::normalizeNodeUris
@@ -380,7 +527,7 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * Turns a saved parent into a dynamic source and reconciles its children.
    */
-  private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt'): void {
+  private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt', bool $reparent = FALSE): void {
     $parent->set('menu_autopilot', [
       'source' => [
         'type' => 'term',
@@ -389,9 +536,21 @@ final class NavSyncManagerTest extends KernelTestBase {
         'sort' => 'title_asc',
         'limit' => 0,
         'existing_children' => $policy,
+        'reparent_matches' => $reparent,
       ],
     ]);
     $parent->save();
+  }
+
+  /**
+   * Reloads a menu link from storage.
+   */
+  private function reloadLink(int $id): MenuLinkContentInterface {
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $storage->resetCache([$id]);
+    $link = $storage->load($id);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $link);
+    return $link;
   }
 
   /**

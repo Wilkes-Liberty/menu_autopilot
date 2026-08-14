@@ -29,10 +29,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - **Reuse matching links** (default): hand-created links that already
     point at a source node are adopted (flagged as managed, URI
     canonicalized, title and weight reconciled). Curated extras stay.
+  - **Reuse matching links, remove extras:** same adoption, but
+    unmanaged children that are not in the source are deleted.
   - **Add missing children only:** generate links for source nodes that
     have no child yet; existing hand-created links are left untouched.
   - **Replace all children:** delete unmanaged children, then build the
     managed set from scratch.
+
+  Matching also follows a path alias to its node, so an
+  `internal:/platforms/helios` child is treated as the same destination
+  as `entity:node/N`. An optional **Move matching links from elsewhere
+  in this menu** checkbox reparents unmanaged matches that are not
+  already under another automatic parent.
 
   A later reconcile also removes unmanaged twins of a node the module
   already manages. Previously the reconcile only saw links it already

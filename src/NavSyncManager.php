@@ -11,6 +11,7 @@ use Drupal\Core\Utility\Token;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\NodeInterface;
+use Drupal\path_alias\PathAliasInterface;
 
 /**
  * Keeps auto-generated child menu links in sync with their source content.
@@ -79,6 +80,9 @@ final class NavSyncManager {
     $this->syncing = TRUE;
     try {
       $policy = $this->existingChildrenPolicy($source);
+      if (!empty($source['reparent_matches'])) {
+        $this->reparentMatchingLinks($parent, $desired);
+      }
       if ($policy === 'replace') {
         foreach ($this->loadChildren($parent) as $link) {
           if (!$this->isManaged($link)) {
@@ -130,6 +134,13 @@ final class NavSyncManager {
         $nid = $this->nodeIdFromLink($link);
         if ($nid !== NULL && isset($owned[$nid])) {
           $link->delete();
+        }
+      }
+      if ($policy === 'adopt_prune') {
+        foreach ($this->loadChildren($parent) as $link) {
+          if (!$this->isManaged($link)) {
+            $link->delete();
+          }
         }
       }
     }
@@ -315,21 +326,124 @@ final class NavSyncManager {
   /**
    * The node id a link already points at, if it is a node link.
    *
-   * Uses the same URI parser as normalizeNodeUris(), so editorial forms
-   * (`internal:/node/12`, `entity:node/12/latest`) resolve the same way as
-   * a canonical `entity:node/12`.
+   * Matches the same URI forms as normalizeNodeUris() (`entity:node/12`,
+   * `internal:/node/12`, editorial `/node/12/latest`) and, when path_alias
+   * is available, an alias that resolves to a node path.
    */
   private function nodeIdFromLink(MenuLinkContentInterface $link): ?int {
     $item = $link->get('link')->first();
     if ($item === NULL) {
       return NULL;
     }
-    $canonical = $this->canonicalNodeUri((string) ($item->getValue()['uri'] ?? ''));
+    $uri = (string) ($item->getValue()['uri'] ?? '');
+    if ($nid = $this->nodeIdFromUri($uri)) {
+      return $nid;
+    }
+    $alias = $this->internalPathFromUri($uri);
+    if ($alias === NULL) {
+      return NULL;
+    }
+    $system = $this->resolveAliasToSystemPath($alias);
+    return $system === NULL ? NULL : $this->nodeIdFromUri('internal:' . $system);
+  }
+
+  /**
+   * The node id encoded in a stored link URI, if any.
+   */
+  private function nodeIdFromUri(string $uri): ?int {
+    $canonical = $this->canonicalNodeUri($uri);
     if ($canonical === NULL) {
       return NULL;
     }
     $nid = (int) substr($canonical, strlen('entity:node/'));
     return $nid > 0 ? $nid : NULL;
+  }
+
+  /**
+   * The path portion of an internal/base URI, or NULL if it is not one.
+   */
+  private function internalPathFromUri(string $uri): ?string {
+    if (str_starts_with($uri, 'internal:')) {
+      $path = substr($uri, strlen('internal:'));
+    }
+    elseif (str_starts_with($uri, 'base:')) {
+      $path = '/' . ltrim(substr($uri, strlen('base:')), '/');
+    }
+    elseif (str_starts_with($uri, '/')) {
+      $path = $uri;
+    }
+    else {
+      return NULL;
+    }
+    $path = parse_url($path, PHP_URL_PATH);
+    return is_string($path) && $path !== '' ? $path : NULL;
+  }
+
+  /**
+   * Resolve a path alias to its system path, if path_alias is installed.
+   */
+  private function resolveAliasToSystemPath(string $alias): ?string {
+    if (!$this->entityTypeManager->hasDefinition('path_alias')) {
+      return NULL;
+    }
+    $alias = '/' . ltrim($alias, '/');
+    $ids = $this->entityTypeManager->getStorage('path_alias')->getQuery()
+      ->condition('alias', $alias)
+      ->accessCheck(FALSE)
+      ->range(0, 1)
+      ->execute();
+    if ($ids === []) {
+      return NULL;
+    }
+    $entity = $this->entityTypeManager->getStorage('path_alias')->load(reset($ids));
+    if (!$entity instanceof PathAliasInterface) {
+      return NULL;
+    }
+    $path = $entity->getPath();
+    return $path !== '' ? $path : NULL;
+  }
+
+  /**
+   * Move unmanaged matches from elsewhere in this menu under the parent.
+   *
+   * Skips links this module already manages and children of another
+   * dynamic parent, so two automatic parents cannot steal from each other.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+   *   The dynamic parent that should receive the matches.
+   * @param int[] $desired
+   *   Source node ids this parent wants as children.
+   */
+  private function reparentMatchingLinks(MenuLinkContentInterface $parent, array $desired): void {
+    if ($desired === []) {
+      return;
+    }
+    $wanted = array_fill_keys($desired, TRUE);
+    $protected = ['menu_link_content:' . $parent->uuid() => TRUE];
+    foreach ($this->findDynamicParents() as $other) {
+      $protected['menu_link_content:' . $other->uuid()] = TRUE;
+    }
+    $ids = $this->menuLinkStorage()->getQuery()
+      ->condition('menu_name', $parent->getMenuName())
+      ->accessCheck(FALSE)
+      ->execute();
+    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+      if (!$link instanceof MenuLinkContentInterface || $this->isManaged($link)) {
+        continue;
+      }
+      if ((int) $link->id() === (int) $parent->id()) {
+        continue;
+      }
+      if (isset($protected[$link->getParentId()])) {
+        continue;
+      }
+      $nid = $this->nodeIdFromLink($link);
+      if ($nid === NULL || !isset($wanted[$nid])) {
+        continue;
+      }
+      $link->set('parent', 'menu_link_content:' . $parent->uuid());
+      $link->save();
+    }
   }
 
   /**
@@ -453,11 +567,13 @@ final class NavSyncManager {
    * How unmanaged children under a parent are treated during sync.
    *
    * @return string
-   *   One of 'adopt', 'add', or 'replace'. Unknown values become 'adopt'.
+   *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
    */
   private function existingChildrenPolicy(array $source): string {
     $policy = (string) ($source['existing_children'] ?? 'adopt');
-    return in_array($policy, ['adopt', 'add', 'replace'], TRUE) ? $policy : 'adopt';
+    return in_array($policy, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
+      ? $policy
+      : 'adopt';
   }
 
   /**
