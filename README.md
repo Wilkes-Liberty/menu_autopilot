@@ -49,7 +49,9 @@ no schema to teach your GraphQL/JSON:API layer.
 
 1. `composer require 'drupal/menu_autopilot:^1.0'` and enable the module.
 2. Edit a top-level menu link (e.g. **Platforms**) → **Automatic children** → pick a source
-   (e.g. *Taxonomy term* → your "Platform" term + the node field that references it).
+   (e.g. *Taxonomy term* → your "Platform" term + the node field that references it). If the
+   parent already has children, choose whether to reuse matching links, add only the
+   missing ones, or replace every child.
 3. Publish content — it appears under that item. Run `drush menu-autopilot:rebuild` any time to
    reconcile everything from scratch.
 

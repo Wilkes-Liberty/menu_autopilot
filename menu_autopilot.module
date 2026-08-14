@@ -38,7 +38,7 @@ function menu_autopilot_help(string $route_name, RouteMatchInterface $route_matc
     $output .= '<h2>' . t('Choosing which menus are managed') . '</h2>';
     $output .= '<p>' . t('On the <a href=":settings">Menu Autopilot settings</a> page, enable the menus that may have automatic children (the main menu is enabled by default) and set the default sort and limit for new dynamic parents.', [':settings' => Url::fromRoute('menu_autopilot.settings_form')->toString()]) . '</p>';
     $output .= '<h2>' . t('Marking a parent dynamic') . '</h2>';
-    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Children are created, reordered, renamed, and removed as content is published, updated, and unpublished — you never hand-place them.') . '</p>';
+    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Choose what to do with children that are already there: reuse matching links, add only the missing ones, or replace every child. Generated children are then created, reordered, renamed, and removed as content is published, updated, and unpublished.') . '</p>';
     $output .= '<h2>' . t('Clean URLs') . '</h2>';
     $output .= '<p>' . t('Generated links always store a canonical <code>entity:node/&lt;id&gt;</code> URI, which resolves to the node’s real path alias. They never leak an editorial route such as <code>/node/12/latest</code>.') . '</p>';
     return $output;
@@ -201,6 +201,19 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#default_value' => $source['type'] ?? 'none',
   ];
 
+  $form['menu_autopilot']['existing_children'] = [
+    '#type' => 'radios',
+    '#title' => t('Existing children'),
+    '#description' => t('What to do with hand-created children already under this link. Matching links are ones that already point at a source node.'),
+    '#options' => [
+      'adopt' => t('Reuse matching links (keep extras)'),
+      'add' => t('Add missing children only'),
+      'replace' => t('Replace all children'),
+    ],
+    '#default_value' => $source['existing_children'] ?? 'adopt',
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+
   $reference_fields = _menu_autopilot_reference_field_options();
   $form['menu_autopilot']['reference_field'] = [
     '#type' => 'select',
@@ -345,8 +358,14 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
     return;
   }
 
+  $existing = (string) ($values['existing_children'] ?? 'adopt');
+  if (!in_array($existing, ['adopt', 'add', 'replace'], TRUE)) {
+    $existing = 'adopt';
+  }
+
   $source = [
     'type' => $type,
+    'existing_children' => $existing,
     'sort' => $values['sort'] ?? 'title_asc',
     'limit' => (int) ($values['limit'] ?? 0),
     'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),

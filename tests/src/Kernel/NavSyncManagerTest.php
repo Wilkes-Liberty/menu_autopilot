@@ -144,6 +144,213 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Enabling automatic children reuses existing child links.
+   *
+   * A parent that already has hand-created children — the typical adoption
+   * path — must take those links over when they already point at a source
+   * node. Creating a second, managed copy is the bug this covers.
+   *
+   * @covers ::syncParent
+   */
+  public function testEnablingAutomaticChildrenAdoptsExistingLinks(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $atlas = $this->createSolution('Atlas', TRUE);
+    $helios = $this->createSolution('Helios', TRUE);
+    $unrelated = Node::create([
+      'type' => 'solution',
+      'title' => 'Curated extra',
+      'status' => 1,
+    ]);
+    $unrelated->save();
+
+    $existing_atlas = MenuLinkContent::create([
+      'title' => 'Atlas (hand)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $atlas->id()],
+    ]);
+    $existing_atlas->save();
+    $existing_helios = MenuLinkContent::create([
+      'title' => 'Helios (hand)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'internal:/node/' . $helios->id()],
+    ]);
+    $existing_helios->save();
+    $existing_extra = MenuLinkContent::create([
+      'title' => 'Curated extra',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unrelated->id()],
+    ]);
+    $existing_extra->save();
+
+    $this->assertCount(3, $this->childrenOf($parent));
+
+    // The editor path: turn the existing parent into a dynamic source.
+    $this->enableAutomaticChildren($parent);
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(3, $children, 'Matching children are adopted, not duplicated.');
+    $this->assertArrayHasKey((int) $existing_atlas->id(), $children);
+    $this->assertArrayHasKey((int) $existing_helios->id(), $children);
+    $this->assertArrayHasKey((int) $existing_extra->id(), $children);
+
+    $atlas_link = $children[(int) $existing_atlas->id()];
+    $helios_link = $children[(int) $existing_helios->id()];
+    $extra_link = $children[(int) $existing_extra->id()];
+
+    $this->assertTrue($this->isManagedLink($atlas_link));
+    $this->assertTrue($this->isManagedLink($helios_link));
+    $this->assertFalse($this->isManagedLink($extra_link), 'Non-source children stay curated.');
+    $this->assertSame(
+      'entity:node/' . $helios->id(),
+      $helios_link->get('link')->first()->getValue()['uri'],
+      'Adopted editorial URIs become canonical.',
+    );
+  }
+
+  /**
+   * A later reconcile drops unmanaged copies left by the old duplicate bug.
+   *
+   * @covers ::syncParent
+   */
+  public function testReconcileRemovesUnmanagedDuplicates(): void {
+    $parent = $this->createDynamicParent();
+    $node = $this->createSolution('Helios', TRUE);
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children);
+    $managed = reset($children);
+
+    $stale = MenuLinkContent::create([
+      'title' => 'Helios (stale)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $node->id()],
+    ]);
+    $stale->save();
+    $this->assertCount(2, $this->childrenOf($parent));
+
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+    $sync->reconcile();
+
+    $after = $this->childrenOf($parent);
+    $this->assertCount(1, $after, 'The unmanaged duplicate is removed.');
+    $this->assertArrayHasKey((int) $managed->id(), $after);
+    $this->assertArrayNotHasKey((int) $stale->id(), $after);
+  }
+
+  /**
+   * Add-only fills gaps and leaves hand-created children unmanaged.
+   *
+   * @covers ::syncParent
+   */
+  public function testAddOnlyFillsGapsWithoutDuplicating(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $atlas = $this->createSolution('Atlas', TRUE);
+    $helios = $this->createSolution('Helios', TRUE);
+    $unrelated = Node::create([
+      'type' => 'solution',
+      'title' => 'Curated extra',
+      'status' => 1,
+    ]);
+    $unrelated->save();
+
+    $existing_atlas = MenuLinkContent::create([
+      'title' => 'Atlas (hand)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $atlas->id()],
+    ]);
+    $existing_atlas->save();
+    $existing_extra = MenuLinkContent::create([
+      'title' => 'Curated extra',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unrelated->id()],
+    ]);
+    $existing_extra->save();
+
+    $this->enableAutomaticChildren($parent, 'add');
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(3, $children);
+    $this->assertArrayHasKey((int) $existing_atlas->id(), $children);
+    $this->assertArrayHasKey((int) $existing_extra->id(), $children);
+    $this->assertFalse($this->isManagedLink($children[(int) $existing_atlas->id()]));
+    $this->assertSame('Atlas (hand)', $children[(int) $existing_atlas->id()]->getTitle());
+    $this->assertFalse($this->isManagedLink($children[(int) $existing_extra->id()]));
+
+    $managed = array_filter($children, $this->isManagedLink(...));
+    $this->assertCount(1, $managed);
+    $helios_link = reset($managed);
+    $this->assertSame('Helios', $helios_link->getTitle());
+    $this->assertSame('entity:node/' . $helios->id(), $helios_link->get('link')->first()->getValue()['uri']);
+  }
+
+  /**
+   * Replace deletes unmanaged children, then builds managed ones from scratch.
+   *
+   * @covers ::syncParent
+   */
+  public function testReplacePurgesUnmanagedChildren(): void {
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+
+    $atlas = $this->createSolution('Atlas', TRUE);
+    $this->createSolution('Helios', TRUE);
+    $unrelated = Node::create([
+      'type' => 'solution',
+      'title' => 'Curated extra',
+      'status' => 1,
+    ]);
+    $unrelated->save();
+
+    $existing_atlas = MenuLinkContent::create([
+      'title' => 'Atlas (hand)',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $atlas->id()],
+    ]);
+    $existing_atlas->save();
+    $existing_extra = MenuLinkContent::create([
+      'title' => 'Curated extra',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unrelated->id()],
+    ]);
+    $existing_extra->save();
+
+    $this->enableAutomaticChildren($parent, 'replace');
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(2, $children, 'Unmanaged children are gone; two source nodes remain.');
+    $this->assertArrayNotHasKey((int) $existing_atlas->id(), $children);
+    $this->assertArrayNotHasKey((int) $existing_extra->id(), $children);
+    foreach ($children as $child) {
+      $this->assertTrue($this->isManagedLink($child));
+    }
+  }
+
+  /**
    * Editorial node link URIs are rewritten to canonical entity references.
    *
    * @covers ::normalizeNodeUris
@@ -168,6 +375,23 @@ final class NavSyncManagerTest extends KernelTestBase {
 
     // Idempotent: a second pass changes nothing.
     $this->assertSame([], $sync->normalizeNodeUris(['main']));
+  }
+
+  /**
+   * Turns a saved parent into a dynamic source and reconciles its children.
+   */
+  private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt'): void {
+    $parent->set('menu_autopilot', [
+      'source' => [
+        'type' => 'term',
+        'reference_field' => 'field_solution_type',
+        'term' => (int) $this->platform->id(),
+        'sort' => 'title_asc',
+        'limit' => 0,
+        'existing_children' => $policy,
+      ],
+    ]);
+    $parent->save();
   }
 
   /**
@@ -213,7 +437,17 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
-   * Loads the managed child links under a parent.
+   * Whether a link is flagged as a Menu Autopilot-managed child.
+   */
+  private function isManagedLink(MenuLinkContentInterface $link): bool {
+    if ($link->get('menu_autopilot')->isEmpty()) {
+      return FALSE;
+    }
+    return !empty($link->get('menu_autopilot')->first()->getValue()['managed']);
+  }
+
+  /**
+   * Loads the child links under a parent.
    *
    * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
    *   Child links keyed by entity id.

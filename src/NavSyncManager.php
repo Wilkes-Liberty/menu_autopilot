@@ -78,8 +78,18 @@ final class NavSyncManager {
 
     $this->syncing = TRUE;
     try {
+      $policy = $this->existingChildrenPolicy($source);
+      if ($policy === 'replace') {
+        foreach ($this->loadChildren($parent) as $link) {
+          if (!$this->isManaged($link)) {
+            $link->delete();
+          }
+        }
+      }
+
       $weight = 0;
       $seen = [];
+      $adoptable = $policy === 'replace' ? [] : $this->adoptableChildren($parent);
       foreach ($desired as $nid) {
         $node = $nodes[$nid] ?? NULL;
         if (!$node instanceof NodeInterface) {
@@ -87,6 +97,15 @@ final class NavSyncManager {
         }
         if ($link = $existing[$nid] ?? NULL) {
           $this->updateChild($link, $node, $source, $weight);
+        }
+        elseif ($link = $adoptable[$nid] ?? NULL) {
+          if ($policy === 'add') {
+            // Leave the hand-created link as-is; do not add a second copy.
+            $seen[$nid] = TRUE;
+            $weight++;
+            continue;
+          }
+          $this->adoptChild($link, $node, $source, $weight);
         }
         else {
           $this->createChild($parent, $node, $source, $weight);
@@ -97,6 +116,19 @@ final class NavSyncManager {
       // Remove owned children that are no longer wanted.
       foreach ($existing as $nid => $link) {
         if (empty($seen[$nid])) {
+          $link->delete();
+        }
+      }
+      // Drop unmanaged twins of a node we already manage. Hand-created
+      // extras (and add-only matches we left unmanaged) are not in
+      // ownedChildren(), so they stay.
+      $owned = $this->ownedChildren($parent);
+      foreach ($this->loadChildren($parent) as $link) {
+        if ($this->isManaged($link)) {
+          continue;
+        }
+        $nid = $this->nodeIdFromLink($link);
+        if ($nid !== NULL && isset($owned[$nid])) {
           $link->delete();
         }
       }
@@ -224,6 +256,48 @@ final class NavSyncManager {
    *   The managed child links, keyed by source node id.
    */
   private function ownedChildren(MenuLinkContentInterface $parent): array {
+    $children = [];
+    foreach ($this->loadChildren($parent) as $link) {
+      $data = $this->getData($link);
+      if (!empty($data['managed']) && !empty($data['node'])) {
+        $children[(int) $data['node']] = $link;
+      }
+    }
+    return $children;
+  }
+
+  /**
+   * Unmanaged children under a parent that already point at a node.
+   *
+   * Used when a parent is first marked dynamic: existing hand-created links
+   * to source nodes are adopted instead of duplicated. Children that do not
+   * resolve to a node (or that are already managed) are ignored so curated
+   * extras stay put. Keyed by node id; the first match wins.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   Unmanaged child links keyed by the node they already target.
+   */
+  private function adoptableChildren(MenuLinkContentInterface $parent): array {
+    $children = [];
+    foreach ($this->loadChildren($parent) as $link) {
+      if ($this->isManaged($link)) {
+        continue;
+      }
+      $nid = $this->nodeIdFromLink($link);
+      if ($nid !== NULL && !isset($children[$nid])) {
+        $children[$nid] = $link;
+      }
+    }
+    return $children;
+  }
+
+  /**
+   * Direct children of a parent link in the same menu.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   Child links, keyed by entity id.
+   */
+  private function loadChildren(MenuLinkContentInterface $parent): array {
     $ids = $this->menuLinkStorage()->getQuery()
       ->condition('menu_name', $parent->getMenuName())
       ->condition('parent', 'menu_link_content:' . $parent->uuid())
@@ -231,15 +305,31 @@ final class NavSyncManager {
       ->execute();
     $children = [];
     foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-      if (!$link instanceof MenuLinkContentInterface) {
-        continue;
-      }
-      $data = $this->getData($link);
-      if (!empty($data['managed']) && !empty($data['node'])) {
-        $children[(int) $data['node']] = $link;
+      if ($link instanceof MenuLinkContentInterface) {
+        $children[(int) $link->id()] = $link;
       }
     }
     return $children;
+  }
+
+  /**
+   * The node id a link already points at, if it is a node link.
+   *
+   * Uses the same URI parser as normalizeNodeUris(), so editorial forms
+   * (`internal:/node/12`, `entity:node/12/latest`) resolve the same way as
+   * a canonical `entity:node/12`.
+   */
+  private function nodeIdFromLink(MenuLinkContentInterface $link): ?int {
+    $item = $link->get('link')->first();
+    if ($item === NULL) {
+      return NULL;
+    }
+    $canonical = $this->canonicalNodeUri((string) ($item->getValue()['uri'] ?? ''));
+    if ($canonical === NULL) {
+      return NULL;
+    }
+    $nid = (int) substr($canonical, strlen('entity:node/'));
+    return $nid > 0 ? $nid : NULL;
   }
 
   /**
@@ -280,6 +370,19 @@ final class NavSyncManager {
       }
     }
     return FALSE;
+  }
+
+  /**
+   * Take over an existing unmanaged child so it is not duplicated.
+   *
+   * Marks the link as managed and reconciles title, weight, and URI. The
+   * entity id is preserved so existing references (and a second reconcile)
+   * keep the same link.
+   */
+  private function adoptChild(MenuLinkContentInterface $link, NodeInterface $node, array $source, int $weight): void {
+    $link->set('menu_autopilot', ['managed' => TRUE, 'node' => (int) $node->id()]);
+    $link->save();
+    $this->updateChild($link, $node, $source, $weight);
   }
 
   /**
@@ -344,6 +447,17 @@ final class NavSyncManager {
       ['clear' => TRUE, 'langcode' => $node->language()->getId()],
     ));
     return $title !== '' ? $title : (string) $node->label();
+  }
+
+  /**
+   * How unmanaged children under a parent are treated during sync.
+   *
+   * @return string
+   *   One of 'adopt', 'add', or 'replace'. Unknown values become 'adopt'.
+   */
+  private function existingChildrenPolicy(array $source): string {
+    $policy = (string) ($source['existing_children'] ?? 'adopt');
+    return in_array($policy, ['adopt', 'add', 'replace'], TRUE) ? $policy : 'adopt';
   }
 
   /**

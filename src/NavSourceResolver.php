@@ -18,6 +18,9 @@ use Drupal\Core\Entity\Query\QueryInterface;
  *     'reference_field' => (string) node field that references the term,
  *     'bundle' => (string) content type,     // type = bundle (and optional term filter)
  *     'nodes' => (int[]) ordered node ids,   // type = manual
+ *     'existing_children' => 'adopt'|'add'|'replace',
+ *                            // how to treat unmanaged children already under
+ *                            // the parent. Consumed by NavSyncManager.
  *     'sort' => 'title_asc'|'title_desc'|'created_desc'|'created_asc'|'manual',
  *     'limit' => (int) 0 for unlimited,
  *     'title_pattern' => (string) optional token pattern for child link titles

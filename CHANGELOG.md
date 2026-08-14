@@ -22,6 +22,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   supply the code that decides whether it passes.
 
 ### Fixed
+- **Enabling automatic children no longer duplicates existing child links.**
+  The Automatic children section now asks what to do with children that
+  are already under the parent:
+
+  - **Reuse matching links** (default): hand-created links that already
+    point at a source node are adopted (flagged as managed, URI
+    canonicalized, title and weight reconciled). Curated extras stay.
+  - **Add missing children only:** generate links for source nodes that
+    have no child yet; existing hand-created links are left untouched.
+  - **Replace all children:** delete unmanaged children, then build the
+    managed set from scratch.
+
+  A later reconcile also removes unmanaged twins of a node the module
+  already manages. Previously the reconcile only saw links it already
+  owned, so it created a second copy of every matching node.
 - **CI: the attribution gate no longer fails on clean commits.** The stripper
   compared each commit message against a copy that had gained a trailing newline,
   so every commit looked modified and the run ended with `strip count > 0 but tip
