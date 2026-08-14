@@ -211,7 +211,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
       'add' => t('Add missing children only'),
       'replace' => t('Replace all children'),
     ],
-    '#default_value' => $source['existing_children'] ?? 'adopt',
+    '#default_value' => _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt'),
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
 
@@ -367,14 +367,9 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
     return;
   }
 
-  $existing = (string) ($values['existing_children'] ?? 'adopt');
-  if (!in_array($existing, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)) {
-    $existing = 'adopt';
-  }
-
   $source = [
     'type' => $type,
-    'existing_children' => $existing,
+    'existing_children' => _menu_autopilot_existing_children_policy($values['existing_children'] ?? 'adopt'),
     'reparent_matches' => !empty($values['reparent_matches']),
     'sort' => $values['sort'] ?? 'title_asc',
     'limit' => (int) ($values['limit'] ?? 0),
@@ -396,6 +391,22 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
   }
 
   $link->set('menu_autopilot', ['source' => $source]);
+}
+
+/**
+ * Normalize an Existing children policy to a known value.
+ *
+ * @param mixed $value
+ *   Stored or submitted policy.
+ *
+ * @return string
+ *   One of adopt, adopt_prune, add, or replace.
+ */
+function _menu_autopilot_existing_children_policy($value): string {
+  $value = (string) $value;
+  return in_array($value, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
+    ? $value
+    : 'adopt';
 }
 
 /**
