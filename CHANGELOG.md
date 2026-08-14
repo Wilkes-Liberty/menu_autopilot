@@ -12,6 +12,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drop-in). Covers server-side paths that local hooks cannot see.
 
 ### Changed
+- **The Existing children radios explain the selected option.** Choosing
+  a policy shows a short description under the field of what will happen
+  to matching links and to extras, so the operator can see the effect
+  before saving.
 - **CI: the attribution check is now the shared workflow.**
   `.github/workflows/attribution.yml` becomes a thin caller pinned to
   `Wilkes-Liberty/shared-ci@v1`, and the vendored `.github/scripts/` copies are
@@ -22,6 +26,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   supply the code that decides whether it passes.
 
 ### Fixed
+- **Enabling automatic children no longer duplicates existing child links.**
+  The Automatic children section now asks what to do with children that
+  are already under the parent:
+
+  - **Reuse matching links** (default): hand-created links that already
+    point at a source node are adopted (flagged as managed, URI
+    canonicalized, title and weight reconciled). Curated extras stay.
+  - **Reuse matching links, remove extras:** same adoption, but
+    unmanaged children that are not in the source are deleted.
+  - **Add missing children only:** generate links for source nodes that
+    have no child yet; existing hand-created links are left untouched.
+  - **Replace all children:** delete unmanaged children, then build the
+    managed set from scratch.
+
+  Matching also follows a path alias to its node, so an
+  `internal:/platforms/helios` child is treated as the same destination
+  as `entity:node/N`. An optional **Move matching links from elsewhere
+  in this menu** checkbox reparents unmanaged matches that are not
+  already under another automatic parent.
+
+  A later reconcile also removes unmanaged twins of a node the module
+  already manages. Previously the reconcile only saw links it already
+  owned, so it created a second copy of every matching node.
 - **CI: the attribution gate no longer fails on clean commits.** The stripper
   compared each commit message against a copy that had gained a trailing newline,
   so every commit looked modified and the run ended with `strip count > 0 but tip

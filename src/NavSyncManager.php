@@ -11,6 +11,7 @@ use Drupal\Core\Utility\Token;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\NodeInterface;
+use Drupal\path_alias\PathAliasInterface;
 
 /**
  * Keeps auto-generated child menu links in sync with their source content.
@@ -78,8 +79,21 @@ final class NavSyncManager {
 
     $this->syncing = TRUE;
     try {
+      $policy = $this->existingChildrenPolicy($source);
+      if (!empty($source['reparent_matches'])) {
+        $this->reparentMatchingLinks($parent, $desired);
+      }
+      if ($policy === 'replace') {
+        foreach ($this->loadChildren($parent) as $link) {
+          if (!$this->isManaged($link)) {
+            $link->delete();
+          }
+        }
+      }
+
       $weight = 0;
       $seen = [];
+      $adoptable = $policy === 'replace' ? [] : $this->adoptableChildren($parent);
       foreach ($desired as $nid) {
         $node = $nodes[$nid] ?? NULL;
         if (!$node instanceof NodeInterface) {
@@ -87,6 +101,15 @@ final class NavSyncManager {
         }
         if ($link = $existing[$nid] ?? NULL) {
           $this->updateChild($link, $node, $source, $weight);
+        }
+        elseif ($link = $adoptable[$nid] ?? NULL) {
+          if ($policy === 'add') {
+            // Leave the hand-created link as-is; do not add a second copy.
+            $seen[$nid] = TRUE;
+            $weight++;
+            continue;
+          }
+          $this->adoptChild($link, $node, $source, $weight);
         }
         else {
           $this->createChild($parent, $node, $source, $weight);
@@ -98,6 +121,26 @@ final class NavSyncManager {
       foreach ($existing as $nid => $link) {
         if (empty($seen[$nid])) {
           $link->delete();
+        }
+      }
+      // Drop unmanaged twins of a node we already manage. Hand-created
+      // extras (and add-only matches we left unmanaged) are not in
+      // ownedChildren(), so they stay.
+      $owned = $this->ownedChildren($parent);
+      foreach ($this->loadChildren($parent) as $link) {
+        if ($this->isManaged($link)) {
+          continue;
+        }
+        $nid = $this->nodeIdFromLink($link);
+        if ($nid !== NULL && isset($owned[$nid])) {
+          $link->delete();
+        }
+      }
+      if ($policy === 'adopt_prune') {
+        foreach ($this->loadChildren($parent) as $link) {
+          if (!$this->isManaged($link)) {
+            $link->delete();
+          }
         }
       }
     }
@@ -224,6 +267,48 @@ final class NavSyncManager {
    *   The managed child links, keyed by source node id.
    */
   private function ownedChildren(MenuLinkContentInterface $parent): array {
+    $children = [];
+    foreach ($this->loadChildren($parent) as $link) {
+      $data = $this->getData($link);
+      if (!empty($data['managed']) && !empty($data['node'])) {
+        $children[(int) $data['node']] = $link;
+      }
+    }
+    return $children;
+  }
+
+  /**
+   * Unmanaged children under a parent that already point at a node.
+   *
+   * Used when a parent is first marked dynamic: existing hand-created links
+   * to source nodes are adopted instead of duplicated. Children that do not
+   * resolve to a node (or that are already managed) are ignored so curated
+   * extras stay put. Keyed by node id; the first match wins.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   Unmanaged child links keyed by the node they already target.
+   */
+  private function adoptableChildren(MenuLinkContentInterface $parent): array {
+    $children = [];
+    foreach ($this->loadChildren($parent) as $link) {
+      if ($this->isManaged($link)) {
+        continue;
+      }
+      $nid = $this->nodeIdFromLink($link);
+      if ($nid !== NULL && !isset($children[$nid])) {
+        $children[$nid] = $link;
+      }
+    }
+    return $children;
+  }
+
+  /**
+   * Direct children of a parent link in the same menu.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   Child links, keyed by entity id.
+   */
+  private function loadChildren(MenuLinkContentInterface $parent): array {
     $ids = $this->menuLinkStorage()->getQuery()
       ->condition('menu_name', $parent->getMenuName())
       ->condition('parent', 'menu_link_content:' . $parent->uuid())
@@ -231,15 +316,134 @@ final class NavSyncManager {
       ->execute();
     $children = [];
     foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-      if (!$link instanceof MenuLinkContentInterface) {
-        continue;
-      }
-      $data = $this->getData($link);
-      if (!empty($data['managed']) && !empty($data['node'])) {
-        $children[(int) $data['node']] = $link;
+      if ($link instanceof MenuLinkContentInterface) {
+        $children[(int) $link->id()] = $link;
       }
     }
     return $children;
+  }
+
+  /**
+   * The node id a link already points at, if it is a node link.
+   *
+   * Matches the same URI forms as normalizeNodeUris() (`entity:node/12`,
+   * `internal:/node/12`, editorial `/node/12/latest`) and, when path_alias
+   * is available, an alias that resolves to a node path.
+   */
+  private function nodeIdFromLink(MenuLinkContentInterface $link): ?int {
+    $item = $link->get('link')->first();
+    if ($item === NULL) {
+      return NULL;
+    }
+    $uri = (string) ($item->getValue()['uri'] ?? '');
+    if ($nid = $this->nodeIdFromUri($uri)) {
+      return $nid;
+    }
+    $alias = $this->internalPathFromUri($uri);
+    if ($alias === NULL) {
+      return NULL;
+    }
+    $system = $this->resolveAliasToSystemPath($alias);
+    return $system === NULL ? NULL : $this->nodeIdFromUri('internal:' . $system);
+  }
+
+  /**
+   * The node id encoded in a stored link URI, if any.
+   */
+  private function nodeIdFromUri(string $uri): ?int {
+    $canonical = $this->canonicalNodeUri($uri);
+    if ($canonical === NULL) {
+      return NULL;
+    }
+    $nid = (int) substr($canonical, strlen('entity:node/'));
+    return $nid > 0 ? $nid : NULL;
+  }
+
+  /**
+   * The path portion of an internal/base URI, or NULL if it is not one.
+   */
+  private function internalPathFromUri(string $uri): ?string {
+    if (str_starts_with($uri, 'internal:')) {
+      $path = substr($uri, strlen('internal:'));
+    }
+    elseif (str_starts_with($uri, 'base:')) {
+      $path = '/' . ltrim(substr($uri, strlen('base:')), '/');
+    }
+    elseif (str_starts_with($uri, '/')) {
+      $path = $uri;
+    }
+    else {
+      return NULL;
+    }
+    $path = parse_url($path, PHP_URL_PATH);
+    return is_string($path) && $path !== '' ? $path : NULL;
+  }
+
+  /**
+   * Resolve a path alias to its system path, if path_alias is installed.
+   */
+  private function resolveAliasToSystemPath(string $alias): ?string {
+    if (!$this->entityTypeManager->hasDefinition('path_alias')) {
+      return NULL;
+    }
+    $alias = '/' . ltrim($alias, '/');
+    $ids = $this->entityTypeManager->getStorage('path_alias')->getQuery()
+      ->condition('alias', $alias)
+      ->accessCheck(FALSE)
+      ->range(0, 1)
+      ->execute();
+    if ($ids === []) {
+      return NULL;
+    }
+    $entity = $this->entityTypeManager->getStorage('path_alias')->load(reset($ids));
+    if (!$entity instanceof PathAliasInterface) {
+      return NULL;
+    }
+    $path = $entity->getPath();
+    return $path !== '' ? $path : NULL;
+  }
+
+  /**
+   * Move unmanaged matches from elsewhere in this menu under the parent.
+   *
+   * Skips links this module already manages and children of another
+   * dynamic parent, so two automatic parents cannot steal from each other.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+   *   The dynamic parent that should receive the matches.
+   * @param int[] $desired
+   *   Source node ids this parent wants as children.
+   */
+  private function reparentMatchingLinks(MenuLinkContentInterface $parent, array $desired): void {
+    if ($desired === []) {
+      return;
+    }
+    $wanted = array_fill_keys($desired, TRUE);
+    $protected = ['menu_link_content:' . $parent->uuid() => TRUE];
+    foreach ($this->findDynamicParents() as $other) {
+      $protected['menu_link_content:' . $other->uuid()] = TRUE;
+    }
+    $ids = $this->menuLinkStorage()->getQuery()
+      ->condition('menu_name', $parent->getMenuName())
+      ->accessCheck(FALSE)
+      ->execute();
+    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+      if (!$link instanceof MenuLinkContentInterface || $this->isManaged($link)) {
+        continue;
+      }
+      if ((int) $link->id() === (int) $parent->id()) {
+        continue;
+      }
+      if (isset($protected[$link->getParentId()])) {
+        continue;
+      }
+      $nid = $this->nodeIdFromLink($link);
+      if ($nid === NULL || !isset($wanted[$nid])) {
+        continue;
+      }
+      $link->set('parent', 'menu_link_content:' . $parent->uuid());
+      $link->save();
+    }
   }
 
   /**
@@ -280,6 +484,19 @@ final class NavSyncManager {
       }
     }
     return FALSE;
+  }
+
+  /**
+   * Take over an existing unmanaged child so it is not duplicated.
+   *
+   * Marks the link as managed and reconciles title, weight, and URI. The
+   * entity id is preserved so existing references (and a second reconcile)
+   * keep the same link.
+   */
+  private function adoptChild(MenuLinkContentInterface $link, NodeInterface $node, array $source, int $weight): void {
+    $link->set('menu_autopilot', ['managed' => TRUE, 'node' => (int) $node->id()]);
+    $link->save();
+    $this->updateChild($link, $node, $source, $weight);
   }
 
   /**
@@ -344,6 +561,19 @@ final class NavSyncManager {
       ['clear' => TRUE, 'langcode' => $node->language()->getId()],
     ));
     return $title !== '' ? $title : (string) $node->label();
+  }
+
+  /**
+   * How unmanaged children under a parent are treated during sync.
+   *
+   * @return string
+   *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
+   */
+  private function existingChildrenPolicy(array $source): string {
+    $policy = (string) ($source['existing_children'] ?? 'adopt');
+    return in_array($policy, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
+      ? $policy
+      : 'adopt';
   }
 
   /**

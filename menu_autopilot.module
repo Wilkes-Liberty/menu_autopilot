@@ -38,7 +38,7 @@ function menu_autopilot_help(string $route_name, RouteMatchInterface $route_matc
     $output .= '<h2>' . t('Choosing which menus are managed') . '</h2>';
     $output .= '<p>' . t('On the <a href=":settings">Menu Autopilot settings</a> page, enable the menus that may have automatic children (the main menu is enabled by default) and set the default sort and limit for new dynamic parents.', [':settings' => Url::fromRoute('menu_autopilot.settings_form')->toString()]) . '</p>';
     $output .= '<h2>' . t('Marking a parent dynamic') . '</h2>';
-    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Children are created, reordered, renamed, and removed as content is published, updated, and unpublished — you never hand-place them.') . '</p>';
+    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Choose what to do with children that are already there: reuse matching links (optionally removing extras), add only the missing ones, or replace every child. An optional checkbox moves matching unmanaged links from elsewhere in the same menu under this parent. Generated children are then created, reordered, renamed, and removed as content is published, updated, and unpublished.') . '</p>';
     $output .= '<h2>' . t('Clean URLs') . '</h2>';
     $output .= '<p>' . t('Generated links always store a canonical <code>entity:node/&lt;id&gt;</code> URI, which resolves to the node’s real path alias. They never leak an editorial route such as <code>/node/12/latest</code>.') . '</p>';
     return $output;
@@ -201,6 +201,53 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#default_value' => $source['type'] ?? 'none',
   ];
 
+  $existing_selector = ':input[name="menu_autopilot[existing_children]"]';
+  $existing_help_id = 'menu-autopilot-existing-children-help';
+  $form['menu_autopilot']['existing_children'] = [
+    '#type' => 'radios',
+    '#title' => t('Existing children'),
+    '#description' => t('Matching links are ones that already point at a source node.'),
+    '#options' => [
+      'adopt' => t('Reuse matching links (keep extras)'),
+      'adopt_prune' => t('Reuse matching links, remove extras'),
+      'add' => t('Add missing children only'),
+      'replace' => t('Replace all children'),
+    ],
+    '#default_value' => _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt'),
+    '#attributes' => ['aria-describedby' => $existing_help_id],
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+
+  // One explanation under the radios; #states shows the selected option.
+  $form['menu_autopilot']['existing_children_help'] = [
+    '#type' => 'container',
+    '#attributes' => [
+      'id' => $existing_help_id,
+      'class' => ['form-item__description'],
+      'aria-live' => 'polite',
+    ],
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+  foreach (_menu_autopilot_existing_children_help() as $policy => $text) {
+    $form['menu_autopilot']['existing_children_help'][$policy] = [
+      '#type' => 'container',
+      '#states' => [
+        'visible' => [$existing_selector => ['value' => $policy]],
+      ],
+      'text' => [
+        '#markup' => '<p>' . $text . '</p>',
+      ],
+    ];
+  }
+
+  $form['menu_autopilot']['reparent_matches'] = [
+    '#type' => 'checkbox',
+    '#title' => t('Move matching links from elsewhere in this menu'),
+    '#description' => t('Unmanaged links in this menu that already point at a source node are moved under this parent, then treated according to the option above. Links owned by another automatic parent are left alone.'),
+    '#default_value' => !empty($source['reparent_matches']),
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+
   $reference_fields = _menu_autopilot_reference_field_options();
   $form['menu_autopilot']['reference_field'] = [
     '#type' => 'select',
@@ -347,6 +394,8 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
 
   $source = [
     'type' => $type,
+    'existing_children' => _menu_autopilot_existing_children_policy($values['existing_children'] ?? 'adopt'),
+    'reparent_matches' => !empty($values['reparent_matches']),
     'sort' => $values['sort'] ?? 'title_asc',
     'limit' => (int) ($values['limit'] ?? 0),
     'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),
@@ -367,6 +416,37 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
   }
 
   $link->set('menu_autopilot', ['source' => $source]);
+}
+
+/**
+ * Normalize an Existing children policy to a known value.
+ *
+ * @param mixed $value
+ *   Stored or submitted policy.
+ *
+ * @return string
+ *   One of adopt, adopt_prune, add, or replace.
+ */
+function _menu_autopilot_existing_children_policy($value): string {
+  $value = (string) $value;
+  return in_array($value, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
+    ? $value
+    : 'adopt';
+}
+
+/**
+ * Per-option explanations for the Existing children radios.
+ *
+ * @return array
+ *   Translatable markup keyed by policy id.
+ */
+function _menu_autopilot_existing_children_help(): array {
+  return [
+    'adopt' => t('Hand-created links that already point at a source node are reused and become automatic. Extra children that are not in the source stay as curated items.'),
+    'adopt_prune' => t('Matching links are reused and become automatic. Extra unmanaged children under this link are removed.'),
+    'add' => t('A managed child is added only when a source node has no child yet. Existing hand-created links are not changed.'),
+    'replace' => t('Every unmanaged child under this link is deleted. The module then builds a new set of automatic children from the source.'),
+  ];
 }
 
 /**
