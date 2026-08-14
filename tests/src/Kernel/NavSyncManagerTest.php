@@ -147,6 +147,20 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Every Existing children policy has an operator-facing explanation.
+   */
+  public function testExistingChildrenHelpCoversEveryPolicy(): void {
+    $help = _menu_autopilot_existing_children_help();
+    $this->assertSame(
+      ['adopt', 'adopt_prune', 'add', 'replace'],
+      array_keys($help),
+    );
+    foreach ($help as $text) {
+      $this->assertNotSame('', trim(strip_tags((string) $text)));
+    }
+  }
+
+  /**
    * Enabling automatic children reuses existing child links.
    *
    * A parent that already has hand-created children — the typical adoption

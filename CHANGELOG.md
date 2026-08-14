@@ -12,6 +12,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drop-in). Covers server-side paths that local hooks cannot see.
 
 ### Changed
+- **The Existing children radios explain the selected option.** Choosing
+  a policy shows a short description under the field of what will happen
+  to matching links and to extras, so the operator can see the effect
+  before saving.
 - **CI: the attribution check is now the shared workflow.**
   `.github/workflows/attribution.yml` becomes a thin caller pinned to
   `Wilkes-Liberty/shared-ci@v1`, and the vendored `.github/scripts/` copies are

@@ -201,10 +201,12 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#default_value' => $source['type'] ?? 'none',
   ];
 
+  $existing_selector = ':input[name="menu_autopilot[existing_children]"]';
+  $existing_help_id = 'menu-autopilot-existing-children-help';
   $form['menu_autopilot']['existing_children'] = [
     '#type' => 'radios',
     '#title' => t('Existing children'),
-    '#description' => t('What to do with hand-created children already under this link. Matching links are ones that already point at a source node.'),
+    '#description' => t('Matching links are ones that already point at a source node.'),
     '#options' => [
       'adopt' => t('Reuse matching links (keep extras)'),
       'adopt_prune' => t('Reuse matching links, remove extras'),
@@ -212,8 +214,31 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
       'replace' => t('Replace all children'),
     ],
     '#default_value' => _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt'),
+    '#attributes' => ['aria-describedby' => $existing_help_id],
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
+
+  // One explanation under the radios; #states shows the selected option.
+  $form['menu_autopilot']['existing_children_help'] = [
+    '#type' => 'container',
+    '#attributes' => [
+      'id' => $existing_help_id,
+      'class' => ['form-item__description'],
+      'aria-live' => 'polite',
+    ],
+    '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
+  ];
+  foreach (_menu_autopilot_existing_children_help() as $policy => $text) {
+    $form['menu_autopilot']['existing_children_help'][$policy] = [
+      '#type' => 'container',
+      '#states' => [
+        'visible' => [$existing_selector => ['value' => $policy]],
+      ],
+      'text' => [
+        '#markup' => '<p>' . $text . '</p>',
+      ],
+    ];
+  }
 
   $form['menu_autopilot']['reparent_matches'] = [
     '#type' => 'checkbox',
@@ -407,6 +432,21 @@ function _menu_autopilot_existing_children_policy($value): string {
   return in_array($value, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
     ? $value
     : 'adopt';
+}
+
+/**
+ * Per-option explanations for the Existing children radios.
+ *
+ * @return array
+ *   Translatable markup keyed by policy id.
+ */
+function _menu_autopilot_existing_children_help(): array {
+  return [
+    'adopt' => t('Hand-created links that already point at a source node are reused and become automatic. Extra children that are not in the source stay as curated items.'),
+    'adopt_prune' => t('Matching links are reused and become automatic. Extra unmanaged children under this link are removed.'),
+    'add' => t('A managed child is added only when a source node has no child yet. Existing hand-created links are not changed.'),
+    'replace' => t('Every unmanaged child under this link is deleted. The module then builds a new set of automatic children from the source.'),
+  ];
 }
 
 /**
