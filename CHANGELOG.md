@@ -29,7 +29,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   in menu_ui.** Autopilot deleted the managed child in `hook_entity_update`
   before menu_ui’s submit handler ran, so `getActive()` returned NULL and
   `menuUiNodeSave()` called `isTranslatable()` on it. Node-form sync is
-  deferred until after that submit. (#29)
+  deferred until after that submit. The node-form work runs in `#after_build`
+  so it sees menu_ui’s widget and appends its flush after menu_ui’s handler.
+  (#29)
 - **Keep current order is ignored for a hand-picked list.** Manual sources
   follow the node list even if a leftover or site-default `preserve` value
   is stored on the parent.

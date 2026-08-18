@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\menu_autopilot\Kernel;
 
+use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
@@ -277,6 +278,47 @@ final class NavSyncManagerTest extends KernelTestBase {
     finally {
       \Drupal::request()->attributes->remove('_menu_autopilot_defer_node_sync');
     }
+  }
+
+  /**
+   * Node-form after-build hides a managed child and flushes after menu_ui.
+   *
+   * The form alter runs before menu_ui, so this work cannot happen there.
+   */
+  public function testNodeFormAfterBuildHidesManagedMenuAndFlushesLast(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+
+    $menu_ui_submit = 'Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit';
+    $form = [
+      'actions' => [
+        'submit' => [
+          '#type' => 'submit',
+          '#submit' => [$menu_ui_submit],
+        ],
+        'preview' => [
+          '#type' => 'submit',
+          '#submit' => ['::submitForm'],
+        ],
+      ],
+      'menu' => [
+        'link' => [
+          'entity_id' => ['#value' => $child->id()],
+        ],
+      ],
+    ];
+    $form = _menu_autopilot_node_form_after_build($form, new FormState());
+
+    $this->assertFalse($form['menu']['#access']);
+    $this->assertSame(
+      [$menu_ui_submit, '_menu_autopilot_flush_queued_node_sync'],
+      $form['actions']['submit']['#submit'],
+    );
+    $this->assertSame(['::submitForm'], $form['actions']['preview']['#submit']);
+    $this->assertSame('Menu link', (string) $form['menu_autopilot_owned']['#title']);
   }
 
   /**

@@ -152,32 +152,48 @@ function _menu_autopilot_should_defer_node_sync(): bool {
 /**
  * Implements hook_form_BASE_FORM_ID_alter() for node_form.
  *
+ * This alter runs before menu_ui (alphabetical). The work that needs
+ * $form['menu'] and a flush submit after menu_ui's handler is done in
+ * #after_build, which runs once the form is fully built.
+ */
+function menu_autopilot_form_node_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  \Drupal::request()->attributes->set('_menu_autopilot_defer_node_sync', TRUE);
+  $form['#after_build'][] = '_menu_autopilot_node_form_after_build';
+}
+
+/**
+ * After-build: hide menu_ui's widget on automatic children and flush last.
+ *
  * Menu UI treats the first menu_link_content pointing at the node as that
  * node's own "Provide a menu link" item. When that link is an automatic
  * child, writing it on node save creates pending menu-link revisions and
  * archiving fatals after this module has already deleted the child.
  */
-function menu_autopilot_form_node_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
-  \Drupal::request()->attributes->set('_menu_autopilot_defer_node_sync', TRUE);
+function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $form_state): array {
   foreach (array_keys($form['actions'] ?? []) as $action) {
     if ($action === 'preview') {
       continue;
     }
-    if (($form['actions'][$action]['#type'] ?? '') === 'submit') {
-      $form['actions'][$action]['#submit'][] = '_menu_autopilot_flush_queued_node_sync';
+    if (($form['actions'][$action]['#type'] ?? '') !== 'submit') {
+      continue;
+    }
+    $submit = $form['actions'][$action]['#submit'] ?? [];
+    if (!in_array('_menu_autopilot_flush_queued_node_sync', $submit, TRUE)) {
+      $submit[] = '_menu_autopilot_flush_queued_node_sync';
+      $form['actions'][$action]['#submit'] = $submit;
     }
   }
 
   $entity_id = $form['menu']['link']['entity_id']['#value'] ?? NULL;
   if (!$entity_id) {
-    return;
+    return $form;
   }
   $link = \Drupal::entityTypeManager()->getStorage('menu_link_content')->load($entity_id);
   if (!$link instanceof MenuLinkContentInterface) {
-    return;
+    return $form;
   }
   if (empty(_menu_autopilot_link_data($link)['managed'])) {
-    return;
+    return $form;
   }
 
   // Hide menu_ui's widget and leave it nothing to write.
@@ -189,6 +205,7 @@ function menu_autopilot_form_node_form_alter(array &$form, FormStateInterface $f
     '#weight' => -2,
     '#group' => 'advanced',
   ];
+  return $form;
 }
 
 /**

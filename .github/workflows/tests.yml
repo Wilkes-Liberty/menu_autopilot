@@ -174,10 +174,10 @@ jobs:
           SIMPLETEST_DB: 'sqlite://localhost/:memory:'
           BROWSERTEST_OUTPUT_DIRECTORY: /tmp
           SYMFONY_DEPRECATIONS_HELPER: weak
-          # A dropped suite must fail the build, not pass quietly. 18 tests
+          # A dropped suite must fail the build, not pass quietly. 19 tests
           # collect today, all in tests/src/Kernel. Raise this deliberately as
           # the suite grows; never lower it to make a red run green.
-          MIN_TESTS: '18'
+          MIN_TESTS: '19'
         run: |
           set -euo pipefail
           # One invocation per directory: PHPUnit 9.6 takes a *single*
