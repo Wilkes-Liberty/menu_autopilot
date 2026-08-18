@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Keep current order** (`preserve`) on term and bundle sources. Automatic
+  children are still added, removed, and retitled from the source, but existing
+  weights are left alone so editors can drag the overview into a custom order.
+  Newly matching children append after the current maximum weight. A→Z and
+  date sorts still rewrite weights on every sync.
+
+### Changed
+- **Child menu label** is the new name for the token pattern field (was
+  “Child link title”), with an example that includes a subtitle field:
+  `[node:title] [node:field_subtitle]`.
+- The menu overview for a managed menu now points editors at the parent’s
+  *Sort children by* and *Child menu label* controls.
+- Editing an automatic child explains that its label and order are owned
+  by the parent, so a one-off rename on the child does not last.
+
 ## [1.1.0] — 2026-08-14
 
 ### Added

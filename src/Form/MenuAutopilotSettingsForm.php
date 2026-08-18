@@ -81,12 +81,8 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
     $form['defaults']['default_sort'] = [
       '#type' => 'select',
       '#title' => $this->t('Default sort'),
-      '#options' => [
-        'title_asc' => $this->t('Title (A→Z)'),
-        'title_desc' => $this->t('Title (Z→A)'),
-        'created_desc' => $this->t('Newest first'),
-        'created_asc' => $this->t('Oldest first'),
-      ],
+      '#description' => $this->t('“Keep current order” leaves weights alone so editors can drag children on the menu overview. The other options rewrite weights on every sync.'),
+      '#options' => _menu_autopilot_sort_options(),
       '#default_value' => $config->get('default_sort') ?: 'title_asc',
     ];
     $form['defaults']['default_limit'] = [

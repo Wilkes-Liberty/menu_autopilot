@@ -23,7 +23,8 @@ use Drupal\Core\Entity\Query\QueryInterface;
  *                            // the parent. Consumed by NavSyncManager.
  *     'reparent_matches' => (bool) move unmanaged matches from elsewhere
  *                            in the same menu under this parent.
- *     'sort' => 'title_asc'|'title_desc'|'created_desc'|'created_asc'|'manual',
+ *     'sort' => 'title_asc'|'title_desc'|'created_desc'|'created_asc'|'preserve',
+ *               // preserve: title ASC for new children / limit; weights stay.
  *     'limit' => (int) 0 for unlimited,
  *     'title_pattern' => (string) optional token pattern for child link titles
  *                        (e.g. '[node:title]'); empty = use the node label.
@@ -120,6 +121,10 @@ final class NavSourceResolver {
 
   /**
    * Apply a sort key to the query.
+   *
+   * Preserve uses title ascending so newly appended children (and a limit,
+   * if set) have a stable order. Existing child weights are left alone by
+   * NavSyncManager.
    */
   private function applySort(QueryInterface $query, string $sort): void {
     [$field, $direction] = match ($sort) {

@@ -158,6 +158,96 @@ final class NavSyncManagerTest extends KernelTestBase {
     foreach ($help as $text) {
       $this->assertNotSame('', trim(strip_tags((string) $text)));
     }
+    $this->assertSame(
+      ['title_asc', 'title_desc', 'created_desc', 'created_asc', 'preserve'],
+      array_keys(_menu_autopilot_sort_options()),
+    );
+  }
+
+  /**
+   * Preserve sort keeps editor weights and still retitles from the pattern.
+   *
+   * New matching children append after the current maximum weight.
+   *
+   * @covers ::syncParent
+   */
+  public function testPreserveSortKeepsEditorWeightsAndAppendsNewChildren(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Zebra', TRUE);
+    $this->createSolution('Atlas', TRUE);
+
+    $by_title = [];
+    foreach ($this->childrenOf($parent) as $child) {
+      $by_title[$child->getTitle()] = $child;
+    }
+    $this->assertCount(2, $by_title);
+    $this->assertLessThan(
+      (int) $by_title['Zebra']->getWeight(),
+      (int) $by_title['Atlas']->getWeight(),
+      'The default A→Z sort puts Atlas before Zebra.',
+    );
+
+    $by_title['Zebra']->set('weight', -10);
+    $by_title['Zebra']->save();
+    $by_title['Atlas']->set('weight', 20);
+    $by_title['Atlas']->save();
+
+    $this->enableAutomaticChildren($parent, 'adopt', FALSE, [
+      'sort' => 'preserve',
+      'title_pattern' => '[node:title] platform',
+    ]);
+
+    $zebra = $this->reloadLink((int) $by_title['Zebra']->id());
+    $atlas = $this->reloadLink((int) $by_title['Atlas']->id());
+    $this->assertSame(-10, (int) $zebra->getWeight());
+    $this->assertSame(20, (int) $atlas->getWeight());
+    $this->assertSame('Zebra platform', $zebra->getTitle());
+    $this->assertSame('Atlas platform', $atlas->getTitle());
+
+    $this->createSolution('Midway', TRUE);
+    $after = $this->childrenOf($parent);
+    $this->assertCount(3, $after);
+    $midway = NULL;
+    foreach ($after as $child) {
+      if ($child->getTitle() === 'Midway platform') {
+        $midway = $child;
+        break;
+      }
+    }
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $midway);
+    $this->assertSame(21, (int) $midway->getWeight(), 'A new child appends after the current max weight.');
+    $this->assertSame(-10, (int) $this->reloadLink((int) $zebra->id())->getWeight());
+    $this->assertSame(20, (int) $this->reloadLink((int) $atlas->id())->getWeight());
+  }
+
+  /**
+   * Title A→Z still rewrites weights on every sync.
+   *
+   * @covers ::syncParent
+   */
+  public function testTitleAscRewritesEditorWeights(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Zebra', TRUE);
+    $this->createSolution('Atlas', TRUE);
+
+    $by_title = [];
+    foreach ($this->childrenOf($parent) as $child) {
+      $by_title[$child->getTitle()] = $child;
+    }
+    $by_title['Zebra']->set('weight', -50);
+    $by_title['Zebra']->save();
+    $by_title['Atlas']->set('weight', 50);
+    $by_title['Atlas']->save();
+
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+    $sync->reconcile();
+
+    $this->assertLessThan(
+      (int) $this->reloadLink((int) $by_title['Zebra']->id())->getWeight(),
+      (int) $this->reloadLink((int) $by_title['Atlas']->id())->getWeight(),
+      'A→Z sort restores Atlas before Zebra after an editor drag.',
+    );
   }
 
   /**
@@ -541,9 +631,9 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * Turns a saved parent into a dynamic source and reconciles its children.
    */
-  private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt', bool $reparent = FALSE): void {
+  private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt', bool $reparent = FALSE, array $overrides = []): void {
     $parent->set('menu_autopilot', [
-      'source' => [
+      'source' => array_merge([
         'type' => 'term',
         'reference_field' => 'field_solution_type',
         'term' => (int) $this->platform->id(),
@@ -551,7 +641,7 @@ final class NavSyncManagerTest extends KernelTestBase {
         'limit' => 0,
         'existing_children' => $policy,
         'reparent_matches' => $reparent,
-      ],
+      ], $overrides),
     ]);
     $parent->save();
   }
@@ -582,13 +672,13 @@ final class NavSyncManagerTest extends KernelTestBase {
       'menu_name' => 'main',
       'link' => ['uri' => 'route:<nolink>'],
       'menu_autopilot' => [
-        'source' => [
+        'source' => array_merge([
           'type' => 'term',
           'reference_field' => 'field_solution_type',
           'term' => (int) $this->platform->id(),
           'sort' => 'title_asc',
           'limit' => 0,
-        ] + $overrides,
+        ], $overrides),
       ],
     ]);
     $parent->save();

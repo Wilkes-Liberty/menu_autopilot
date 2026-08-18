@@ -93,6 +93,8 @@ final class NavSyncManager {
 
       $weight = 0;
       $seen = [];
+      $preserve = $this->preservesEditorOrder($source);
+      $append_weight = $preserve ? $this->nextAppendWeight($parent) : 0;
       $adoptable = $policy === 'replace' ? [] : $this->adoptableChildren($parent);
       foreach ($desired as $nid) {
         $node = $nodes[$nid] ?? NULL;
@@ -100,22 +102,26 @@ final class NavSyncManager {
           continue;
         }
         if ($link = $existing[$nid] ?? NULL) {
-          $this->updateChild($link, $node, $source, $weight);
+          $this->updateChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
         }
         elseif ($link = $adoptable[$nid] ?? NULL) {
           if ($policy === 'add') {
             // Leave the hand-created link as-is; do not add a second copy.
             $seen[$nid] = TRUE;
-            $weight++;
+            if (!$preserve) {
+              $weight++;
+            }
             continue;
           }
-          $this->adoptChild($link, $node, $source, $weight);
+          $this->adoptChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
         }
         else {
-          $this->createChild($parent, $node, $source, $weight);
+          $this->createChild($parent, $node, $source, $preserve ? $append_weight++ : $weight);
         }
         $seen[$nid] = TRUE;
-        $weight++;
+        if (!$preserve) {
+          $weight++;
+        }
       }
       // Remove owned children that are no longer wanted.
       foreach ($existing as $nid => $link) {
@@ -524,7 +530,7 @@ final class NavSyncManager {
       $link->set('title', $title);
       $changed = TRUE;
     }
-    if ((int) $link->getWeight() !== $weight) {
+    if (!$this->preservesEditorOrder($source) && (int) $link->getWeight() !== $weight) {
       $link->set('weight', $weight);
       $changed = TRUE;
     }
@@ -538,6 +544,27 @@ final class NavSyncManager {
     if ($changed) {
       $link->save();
     }
+  }
+
+  /**
+   * TRUE when the parent keeps editor-set child weights (drag order).
+   */
+  private function preservesEditorOrder(array $source): bool {
+    return ($source['sort'] ?? '') === 'preserve';
+  }
+
+  /**
+   * Weight for a newly created child when the editor order is preserved.
+   *
+   * Appends after every current sibling so a new published node does not
+   * land in the middle of a hand-arranged list.
+   */
+  private function nextAppendWeight(MenuLinkContentInterface $parent): int {
+    $max = -1;
+    foreach ($this->loadChildren($parent) as $link) {
+      $max = max($max, (int) $link->getWeight());
+    }
+    return $max + 1;
   }
 
   /**
