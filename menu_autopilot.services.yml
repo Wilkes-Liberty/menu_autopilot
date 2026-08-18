@@ -5,3 +5,5 @@ services:
   menu_autopilot.sync_manager:
     class: Drupal\menu_autopilot\NavSyncManager
     arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token']
+    tags:
+      - { name: needs_destruction }

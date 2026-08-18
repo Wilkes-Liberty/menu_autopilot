@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Drupal\menu_autopilot;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
+use Drupal\Core\DestructableInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Utility\Token;
@@ -22,12 +23,19 @@ use Drupal\path_alias\PathAliasInterface;
  * Every managed link uses a canonical `entity:node/<nid>` URI so it resolves to
  * the node's real path alias — never a raw or editorial path.
  */
-final class NavSyncManager {
+final class NavSyncManager implements DestructableInterface {
 
   /**
    * Re-entrancy guard: TRUE while this manager is saving its own child links.
    */
   private bool $syncing = FALSE;
+
+  /**
+   * Node ids whose reconcile is waiting until after node-form submit handlers.
+   *
+   * @var array<int, true>
+   */
+  private array $queuedNodeIds = [];
 
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
@@ -41,6 +49,46 @@ final class NavSyncManager {
    */
   public function isSyncing(): bool {
     return $this->syncing;
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function destruct(): void {
+    $this->flushQueued();
+  }
+
+  /**
+   * Queue a node to reconcile after menu_ui has finished writing its link.
+   *
+   * Node form submit saves the node (this module's entity hooks run) and only
+   * then runs menu_ui's submit handler. Deleting a managed child in the hook
+   * makes getActive() return NULL and menuUiNodeSave() fatal on
+   * isTranslatable().
+   */
+  public function queueNode(NodeInterface $node): void {
+    $id = (int) $node->id();
+    if ($id > 0) {
+      $this->queuedNodeIds[$id] = TRUE;
+    }
+  }
+
+  /**
+   * Reconcile every node queued by queueNode().
+   */
+  public function flushQueued(): void {
+    if ($this->queuedNodeIds === []) {
+      return;
+    }
+    $ids = array_keys($this->queuedNodeIds);
+    $this->queuedNodeIds = [];
+    $storage = $this->entityTypeManager->getStorage('node');
+    $storage->resetCache($ids);
+    foreach ($storage->loadMultiple($ids) as $node) {
+      if ($node instanceof NodeInterface) {
+        $this->syncNode($node);
+      }
+    }
   }
 
   /**
@@ -548,9 +596,12 @@ final class NavSyncManager {
 
   /**
    * TRUE when the parent keeps editor-set child weights (drag order).
+   *
+   * Manual sources always follow the hand-picked node list, even if a leftover
+   * or site-default `preserve` value is stored on the descriptor.
    */
   private function preservesEditorOrder(array $source): bool {
-    return ($source['sort'] ?? '') === 'preserve';
+    return ($source['type'] ?? '') !== 'manual' && ($source['sort'] ?? '') === 'preserve';
   }
 
   /**

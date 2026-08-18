@@ -21,6 +21,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   *Sort children by* and *Child menu label* controls.
 - Editing an automatic child explains that its label and order are owned
   by the parent, so a one-off rename on the child does not last.
+- The node edit form no longer treats an automatic child as that node’s
+  own “Provide a menu link” item. Label and order stay on the parent.
+
+### Fixed
+- **Archiving or unpublishing a node from its edit form no longer fatals
+  in menu_ui.** Autopilot deleted the managed child in `hook_entity_update`
+  before menu_ui’s submit handler ran, so `getActive()` returned NULL and
+  `menuUiNodeSave()` called `isTranslatable()` on it. Node-form sync is
+  deferred until after that submit. (#29)
+- **Keep current order is ignored for a hand-picked list.** Manual sources
+  follow the node list even if a leftover or site-default `preserve` value
+  is stored on the parent.
 
 ## [1.1.0] — 2026-08-14
 

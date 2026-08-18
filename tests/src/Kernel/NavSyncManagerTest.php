@@ -251,6 +251,73 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Node-form unpublish does not delete the child until the queue is flushed.
+   *
+   * Menu UI writes the node's menu link in a submit handler after the entity
+   * hooks. Deleting first makes getActive() return NULL and fatals.
+   *
+   * @covers ::queueNode
+   * @covers ::flushQueued
+   */
+  public function testNodeFormUnpublishDefersChildRemoval(): void {
+    $parent = $this->createDynamicParent();
+    $node = $this->createSolution('Atlas', TRUE);
+    $this->assertCount(1, $this->childrenOf($parent));
+
+    \Drupal::request()->attributes->set('_menu_autopilot_defer_node_sync', TRUE);
+    try {
+      $node->setUnpublished()->save();
+      $this->assertCount(1, $this->childrenOf($parent), 'The child remains until menu_ui has finished.');
+
+      /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+      $sync = $this->container->get('menu_autopilot.sync_manager');
+      $sync->flushQueued();
+      $this->assertCount(0, $this->childrenOf($parent), 'Flush after submit removes the unpublished node.');
+    }
+    finally {
+      \Drupal::request()->attributes->remove('_menu_autopilot_defer_node_sync');
+    }
+  }
+
+  /**
+   * Manual list order is applied even when a leftover preserve sort is stored.
+   *
+   * @covers ::syncParent
+   */
+  public function testPreserveDoesNotOverrideManualListOrder(): void {
+    $parent = $this->createDynamicParent();
+    $zebra = $this->createSolution('Zebra', TRUE);
+    $atlas = $this->createSolution('Atlas', TRUE);
+
+    $parent->set('menu_autopilot', [
+      'source' => [
+        'type' => 'manual',
+        'nodes' => [(int) $zebra->id(), (int) $atlas->id()],
+        'sort' => 'preserve',
+        'existing_children' => 'adopt',
+        'limit' => 0,
+      ],
+    ]);
+    $parent->save();
+
+    $by_nid = [];
+    foreach ($this->childrenOf($parent) as $child) {
+      $item = $child->get('link')->first();
+      $uri = $item !== NULL ? (string) ($item->getValue()['uri'] ?? '') : '';
+      if (preg_match('#entity:node/(\d+)#', $uri, $matches)) {
+        $by_nid[(int) $matches[1]] = $child;
+      }
+    }
+    $this->assertArrayHasKey((int) $zebra->id(), $by_nid);
+    $this->assertArrayHasKey((int) $atlas->id(), $by_nid);
+    $this->assertLessThan(
+      (int) $by_nid[(int) $atlas->id()]->getWeight(),
+      (int) $by_nid[(int) $zebra->id()]->getWeight(),
+      'The hand-picked list order wins over a leftover preserve sort.',
+    );
+  }
+
+  /**
    * Enabling automatic children reuses existing child links.
    *
    * A parent that already has hand-created children — the typical adoption

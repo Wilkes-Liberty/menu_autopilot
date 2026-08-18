@@ -128,11 +128,74 @@ function _menu_autopilot_react(EntityInterface $entity): void {
     return;
   }
   if ($entity instanceof NodeInterface) {
+    // Node forms save the entity before menu_ui's submit handler runs. Queue
+    // until that handler has finished so we do not delete a link it still
+    // holds by entity id.
+    if (_menu_autopilot_should_defer_node_sync()) {
+      $sync->queueNode($entity);
+      return;
+    }
     $sync->syncNode($entity);
   }
   elseif ($entity instanceof MenuLinkContentInterface) {
     $sync->syncParentIfDynamic($entity);
   }
+}
+
+/**
+ * TRUE while a node form submit is in progress.
+ */
+function _menu_autopilot_should_defer_node_sync(): bool {
+  return (bool) \Drupal::request()->attributes->get('_menu_autopilot_defer_node_sync');
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter() for node_form.
+ *
+ * Menu UI treats the first menu_link_content pointing at the node as that
+ * node's own "Provide a menu link" item. When that link is an automatic
+ * child, writing it on node save creates pending menu-link revisions and
+ * archiving fatals after this module has already deleted the child.
+ */
+function menu_autopilot_form_node_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  \Drupal::request()->attributes->set('_menu_autopilot_defer_node_sync', TRUE);
+  foreach (array_keys($form['actions'] ?? []) as $action) {
+    if ($action === 'preview') {
+      continue;
+    }
+    if (($form['actions'][$action]['#type'] ?? '') === 'submit') {
+      $form['actions'][$action]['#submit'][] = '_menu_autopilot_flush_queued_node_sync';
+    }
+  }
+
+  $entity_id = $form['menu']['link']['entity_id']['#value'] ?? NULL;
+  if (!$entity_id) {
+    return;
+  }
+  $link = \Drupal::entityTypeManager()->getStorage('menu_link_content')->load($entity_id);
+  if (!$link instanceof MenuLinkContentInterface) {
+    return;
+  }
+  if (empty(_menu_autopilot_link_data($link)['managed'])) {
+    return;
+  }
+
+  // Hide menu_ui's widget and leave it nothing to write.
+  $form['menu']['#access'] = FALSE;
+  $form['menu_autopilot_owned'] = [
+    '#type' => 'item',
+    '#title' => t('Menu link'),
+    '#markup' => t('This page appears in the menu as an automatic child. To change its label or order, edit the parent menu item and use <em>Child menu label</em> and <em>Sort children by</em>.'),
+    '#weight' => -2,
+    '#group' => 'advanced',
+  ];
+}
+
+/**
+ * Submit handler: reconcile nodes queued during this form save.
+ */
+function _menu_autopilot_flush_queued_node_sync(array &$form, FormStateInterface $form_state): void {
+  \Drupal::service('menu_autopilot.sync_manager')->flushQueued();
 }
 
 /**
@@ -423,10 +486,12 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
     'type' => $type,
     'existing_children' => _menu_autopilot_existing_children_policy($values['existing_children'] ?? 'adopt'),
     'reparent_matches' => !empty($values['reparent_matches']),
-    'sort' => $values['sort'] ?? 'title_asc',
-    'limit' => (int) ($values['limit'] ?? 0),
     'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),
   ];
+  if ($type === 'term' || $type === 'bundle') {
+    $source['sort'] = $values['sort'] ?? 'title_asc';
+    $source['limit'] = (int) ($values['limit'] ?? 0);
+  }
   if ($type === 'term') {
     $source['reference_field'] = trim((string) ($values['reference_field'] ?? ''));
     $source['term'] = (int) ($values['term'] ?? 0);
