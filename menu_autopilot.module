@@ -26,6 +26,7 @@ use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\Url;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\NodeInterface;
+use Drupal\system\Entity\Menu;
 
 /**
  * Implements hook_help().
@@ -38,7 +39,8 @@ function menu_autopilot_help(string $route_name, RouteMatchInterface $route_matc
     $output .= '<h2>' . t('Choosing which menus are managed') . '</h2>';
     $output .= '<p>' . t('On the <a href=":settings">Menu Autopilot settings</a> page, enable the menus that may have automatic children (the main menu is enabled by default) and set the default sort and limit for new dynamic parents.', [':settings' => Url::fromRoute('menu_autopilot.settings_form')->toString()]) . '</p>';
     $output .= '<h2>' . t('Marking a parent dynamic') . '</h2>';
-    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Automatic children</em> section. Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Choose what to do with children that are already there: reuse matching links (optionally removing extras), add only the missing ones, or replace every child. An optional checkbox moves matching unmanaged links from elsewhere in the same menu under this parent. Generated children are then created, reordered, renamed, and removed as content is published, updated, and unpublished.') . '</p>';
+    $output .= '<p>' . t('Edit any link in a managed menu and open the <em>Menu Autopilot</em> section (labelled “Menu Autopilot: children of …” for that item). Pick a source: a taxonomy term (all nodes whose reference field points at it), a content type, or a hand-picked list of nodes. Choose what to do with children that are already there: reuse matching links (optionally removing extras), add only the missing ones, or replace every child. An optional checkbox moves matching unmanaged links from elsewhere in the same menu under this parent. Generated children are then created, reordered, renamed, and removed as content is published, updated, and unpublished.') . '</p>';
+    $output .= '<p>' . t('To keep a drag-and-drop order, set <em>Sort children by</em> to “Keep current order”. To include a subtitle or other field in the label, set <em>Child menu label</em> on that same parent (for example <code>[node:title] [node:field_subtitle]</code>). Those controls live on the parent link, not on the menu overview.') . '</p>';
     $output .= '<h2>' . t('Clean URLs') . '</h2>';
     $output .= '<p>' . t('Generated links always store a canonical <code>entity:node/&lt;id&gt;</code> URI, which resolves to the node’s real path alias. They never leak an editorial route such as <code>/node/12/latest</code>.') . '</p>';
     return $output;
@@ -126,6 +128,13 @@ function _menu_autopilot_react(EntityInterface $entity): void {
     return;
   }
   if ($entity instanceof NodeInterface) {
+    // Node forms save the entity before menu_ui's submit handler runs. Queue
+    // until that handler has finished so we do not delete a link it still
+    // holds by entity id.
+    if (_menu_autopilot_should_defer_node_sync()) {
+      $sync->queueNode($entity);
+      return;
+    }
     $sync->syncNode($entity);
   }
   elseif ($entity instanceof MenuLinkContentInterface) {
@@ -134,9 +143,105 @@ function _menu_autopilot_react(EntityInterface $entity): void {
 }
 
 /**
+ * TRUE while a node form submit is in progress.
+ */
+function _menu_autopilot_should_defer_node_sync(): bool {
+  return (bool) \Drupal::request()->attributes->get('_menu_autopilot_defer_node_sync');
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter() for node_form.
+ *
+ * This alter runs before menu_ui (alphabetical). The work that needs
+ * $form['menu'] and a flush submit after menu_ui's handler is done in
+ * #after_build, which runs once the form is fully built.
+ */
+function menu_autopilot_form_node_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  \Drupal::request()->attributes->set('_menu_autopilot_defer_node_sync', TRUE);
+  $form['#after_build'][] = '_menu_autopilot_node_form_after_build';
+}
+
+/**
+ * After-build: hide menu_ui's widget on automatic children and flush last.
+ *
+ * Menu UI treats the first menu_link_content pointing at the node as that
+ * node's own "Provide a menu link" item. When that link is an automatic
+ * child, writing it on node save creates pending menu-link revisions and
+ * archiving fatals after this module has already deleted the child.
+ */
+function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $form_state): array {
+  foreach (array_keys($form['actions'] ?? []) as $action) {
+    if ($action === 'preview') {
+      continue;
+    }
+    if (($form['actions'][$action]['#type'] ?? '') !== 'submit') {
+      continue;
+    }
+    $submit = $form['actions'][$action]['#submit'] ?? [];
+    if (!in_array('_menu_autopilot_flush_queued_node_sync', $submit, TRUE)) {
+      $submit[] = '_menu_autopilot_flush_queued_node_sync';
+      $form['actions'][$action]['#submit'] = $submit;
+    }
+  }
+
+  $entity_id = $form['menu']['link']['entity_id']['#value'] ?? NULL;
+  if (!$entity_id) {
+    return $form;
+  }
+  $link = \Drupal::entityTypeManager()->getStorage('menu_link_content')->load($entity_id);
+  if (!$link instanceof MenuLinkContentInterface) {
+    return $form;
+  }
+  if (empty(_menu_autopilot_link_data($link)['managed'])) {
+    return $form;
+  }
+
+  // Hide menu_ui's widget and leave it nothing to write.
+  $form['menu']['#access'] = FALSE;
+  $form['menu_autopilot_owned'] = [
+    '#type' => 'item',
+    '#title' => t('Menu link'),
+    '#markup' => t('This page appears in the menu as an automatic child. To change its label or order, edit the parent menu item and open its <em>Menu Autopilot</em> section.'),
+    '#weight' => -2,
+    '#group' => 'advanced',
+  ];
+  return $form;
+}
+
+/**
+ * Submit handler: reconcile nodes queued during this form save.
+ */
+function _menu_autopilot_flush_queued_node_sync(array &$form, FormStateInterface $form_state): void {
+  \Drupal::service('menu_autopilot.sync_manager')->flushQueued();
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for menu_edit_form.
+ *
+ * The overview is where editors try to rename and drag automatic children,
+ * so say here how labels and order are actually controlled.
+ */
+function menu_autopilot_form_menu_edit_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  $form_object = $form_state->getFormObject();
+  $menu = $form_object instanceof EntityFormInterface ? $form_object->getEntity() : NULL;
+  if (!$menu instanceof Menu) {
+    return;
+  }
+  $managed = \Drupal::config('menu_autopilot.settings')->get('managed_menus') ?: ['main'];
+  if (!in_array($menu->id(), $managed, TRUE)) {
+    return;
+  }
+  $form['menu_autopilot_overview_help'] = [
+    '#type' => 'item',
+    '#weight' => -20,
+    '#markup' => '<p>' . t('Menu Autopilot keeps automatic children in sync with published content. To keep a drag-and-drop order or set a label pattern, edit the <em>parent</em> link and open its <em>Menu Autopilot</em> section (for example “Menu Autopilot: children of Platforms”). Use <em>Sort children by</em> → “Keep current order”, and <em>Child menu label</em> such as <code>[node:title] [node:field_subtitle]</code>.') . '</p>',
+  ];
+}
+
+/**
  * Implements hook_form_BASE_FORM_ID_alter() for menu_link_content_form.
  *
- * Adds an "Automatic children" section to the menu link form so an editor can
+ * Adds a "Menu Autopilot" section to the menu link form so an editor can
  * turn any link into a dynamic parent. The values are persisted onto the
  * link's `menu_autopilot` base field by _menu_autopilot_link_form_builder().
  */
@@ -149,6 +254,12 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   // Never offer the controls on a link the module generates and owns.
   $data = _menu_autopilot_link_data($link);
   if (!empty($data['managed'])) {
+    $form['menu_autopilot_managed'] = [
+      '#type' => 'item',
+      '#title' => t('Menu Autopilot child'),
+      '#markup' => t('This link is kept in sync by Menu Autopilot. To change the label pattern or keep a drag-and-drop order, edit the <em>parent</em> item and open its <em>Menu Autopilot</em> section.'),
+      '#weight' => 5,
+    ];
     return;
   }
   $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
@@ -177,12 +288,12 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     $description = t('This link’s menu is not enabled for Menu Autopilot, so children configured here will not sync until it is enabled on the <a href=":settings">settings page</a>.', [':settings' => $settings_url]);
   }
   else {
-    $description = t('Generate this link’s children from published content and keep them in sync automatically. Only menus enabled on the <a href=":settings">settings page</a> are synced.', [':settings' => $settings_url]);
+    $description = t('Menu Autopilot generates this link’s children from published content and keeps them in sync. Only menus enabled on the <a href=":settings">settings page</a> are synced.', [':settings' => $settings_url]);
   }
 
   $form['menu_autopilot'] = [
     '#type' => 'details',
-    '#title' => t('Automatic children'),
+    '#title' => _menu_autopilot_parent_settings_title($link),
     '#description' => $description,
     '#open' => ($source['type'] ?? 'none') !== 'none',
     '#tree' => TRUE,
@@ -293,12 +404,8 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   $form['menu_autopilot']['sort'] = [
     '#type' => 'select',
     '#title' => t('Sort children by'),
-    '#options' => [
-      'title_asc' => t('Title (A→Z)'),
-      'title_desc' => t('Title (Z→A)'),
-      'created_desc' => t('Newest first'),
-      'created_asc' => t('Oldest first'),
-    ],
+    '#description' => t('“Keep current order” leaves weights alone so you can drag children on the menu overview. New items are appended at the end. The other options rewrite weights on every sync.'),
+    '#options' => _menu_autopilot_sort_options(),
     '#default_value' => $source['sort'] ?? $settings->get('default_sort') ?? 'title_asc',
     '#states' => ['visible' => $visible_if(['term', 'bundle'])],
   ];
@@ -314,8 +421,8 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
 
   $form['menu_autopilot']['title_pattern'] = [
     '#type' => 'textfield',
-    '#title' => t('Child link title'),
-    '#description' => t('Optional token pattern, for example <code>[node:title]</code>. Leave blank to use each node’s title.'),
+    '#title' => t('Child menu label'),
+    '#description' => t('Token pattern for each generated label. Leave blank to use the node title only. To include a subtitle field: <code>[node:title] [node:field_subtitle]</code>.'),
     '#default_value' => $source['title_pattern'] ?? '',
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
@@ -335,7 +442,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
 /**
  * Validation handler: enforces the fields each source type needs.
  *
- * Runs only against the "Automatic children" values; the standard menu-link
+ * Runs only against the Menu Autopilot values; the standard menu-link
  * validation is untouched. Errors are attached to the offending element so they
  * are announced to assistive technology and anchored in the form.
  */
@@ -366,7 +473,7 @@ function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $fo
 }
 
 /**
- * Entity builder: writes the "Automatic children" values onto the link.
+ * Entity builder: writes the Menu Autopilot values onto the link.
  *
  * Runs as the menu link entity is assembled from the submitted form, before it
  * is saved, so the subsequent entity-save hook sees the new descriptor and
@@ -396,10 +503,12 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
     'type' => $type,
     'existing_children' => _menu_autopilot_existing_children_policy($values['existing_children'] ?? 'adopt'),
     'reparent_matches' => !empty($values['reparent_matches']),
-    'sort' => $values['sort'] ?? 'title_asc',
-    'limit' => (int) ($values['limit'] ?? 0),
     'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),
   ];
+  if ($type === 'term' || $type === 'bundle') {
+    $source['sort'] = $values['sort'] ?? 'title_asc';
+    $source['limit'] = (int) ($values['limit'] ?? 0);
+  }
   if ($type === 'term') {
     $source['reference_field'] = trim((string) ($values['reference_field'] ?? ''));
     $source['term'] = (int) ($values['term'] ?? 0);
@@ -416,6 +525,38 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
   }
 
   $link->set('menu_autopilot', ['source' => $source]);
+}
+
+/**
+ * The Menu Autopilot details title on a parent link form.
+ *
+ * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+ *   The parent link being edited.
+ *
+ * @return \Drupal\Core\StringTranslation\TranslatableMarkup
+ *   A title that names this module and this parent.
+ */
+function _menu_autopilot_parent_settings_title(MenuLinkContentInterface $link) {
+  $title = trim((string) $link->getTitle());
+  return $title !== ''
+    ? t('Menu Autopilot: children of @parent', ['@parent' => $title])
+    : t('Menu Autopilot: children of this item');
+}
+
+/**
+ * Sort options for the parent-link form and the site-wide defaults.
+ *
+ * @return array
+ *   Translatable labels keyed by sort id.
+ */
+function _menu_autopilot_sort_options(): array {
+  return [
+    'title_asc' => t('Title (A→Z)'),
+    'title_desc' => t('Title (Z→A)'),
+    'created_desc' => t('Newest first'),
+    'created_asc' => t('Oldest first'),
+    'preserve' => t('Keep current order (drag to rearrange)'),
+  ];
 }
 
 /**
