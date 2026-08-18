@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-08-18
+
 ### Added
 - **Keep current order** (`preserve`) on term and bundle sources. Automatic
   children are still added, removed, and retitled from the source, but existing
