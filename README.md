@@ -31,7 +31,7 @@ that gap.
 - **Headless-clean URLs.** Generated links use **canonical entity references**, so they resolve
   to your real path alias (Pathauto or manual) — never `/node/N` or an editorial route.
 - **Custom labels via tokens.** By default a child is labelled with its node's title. On the
-  parent’s **Automatic children** section, **Child menu label** accepts a token pattern
+  parent’s **Menu Autopilot** section, **Child menu label** accepts a token pattern
   (e.g. `[node:title] [node:field_subtitle]`) so nav can include a subtitle or a shorter
   label without touching the page title. URIs are never tokenized, so the clean-URL
   guarantee always holds.
@@ -44,7 +44,7 @@ that gap.
 
 ## How it works
 
-Menu Autopilot adds an **"Automatic children"** section to the menu-link edit form. Choose a
+Menu Autopilot adds a **"Menu Autopilot: children of …"** section to the menu-link edit form. Choose a
 source and the module keeps a set of managed child links under that parent in sync with the
 matching published content. Managed links are ordinary `menu_link_content` entities (so every
 menu consumer sees them), flagged and reconciled by the module. Nothing is virtual, so there is
@@ -53,7 +53,7 @@ no schema to teach your GraphQL/JSON:API layer.
 ## Quick start
 
 1. `composer require 'drupal/menu_autopilot:^1.0'` and enable the module.
-2. Edit a top-level menu link (e.g. **Platforms**) → **Automatic children** → pick a source
+2. Edit a top-level menu link (e.g. **Platforms**) → **Menu Autopilot: children of Platforms** → pick a source
    (e.g. *Taxonomy term* → your "Platform" term + the node field that references it). If the
    parent already has children, choose whether to reuse matching links (and whether
    to drop extras), add only the missing ones, or replace every child. Optionally

@@ -67,7 +67,7 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
     $form['managed_menus'] = [
       '#type' => 'checkboxes',
       '#title' => $this->t('Managed menus'),
-      '#description' => $this->t('The menus whose links can drive automatic children. Only links in these menus show the “Automatic children” controls and are kept in sync.'),
+      '#description' => $this->t('The menus whose links can drive automatic children. Only links in these menus show the Menu Autopilot section and are kept in sync.'),
       '#options' => $menus,
       '#default_value' => $config->get('managed_menus') ?: [],
     ];

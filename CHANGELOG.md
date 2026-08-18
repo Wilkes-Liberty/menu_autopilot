@@ -17,8 +17,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Child menu label** is the new name for the token pattern field (was
   “Child link title”), with an example that includes a subtitle field:
   `[node:title] [node:field_subtitle]`.
+- The parent-link settings section is titled **Menu Autopilot: children of
+  [this item]** so it is obvious which module owns the controls.
 - The menu overview for a managed menu now points editors at the parent’s
-  *Sort children by* and *Child menu label* controls.
+  Menu Autopilot section (*Sort children by* and *Child menu label*).
 - Editing an automatic child explains that its label and order are owned
   by the parent, so a one-off rename on the child does not last.
 - The node edit form no longer treats an automatic child as that node’s

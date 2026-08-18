@@ -163,6 +163,24 @@ final class NavSyncManagerTest extends KernelTestBase {
       ['title_asc', 'title_desc', 'created_desc', 'created_asc', 'preserve'],
       array_keys(_menu_autopilot_sort_options()),
     );
+    $named = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $this->assertSame(
+      'Menu Autopilot: children of Platforms',
+      (string) _menu_autopilot_parent_settings_title($named),
+    );
+    $untitled = MenuLinkContent::create([
+      'title' => '',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $this->assertSame(
+      'Menu Autopilot: children of this item',
+      (string) _menu_autopilot_parent_settings_title($untitled),
+    );
   }
 
   /**
@@ -319,6 +337,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     );
     $this->assertSame(['::submitForm'], $form['actions']['preview']['#submit']);
     $this->assertSame('Menu link', (string) $form['menu_autopilot_owned']['#title']);
+    $this->assertStringContainsString('Menu Autopilot', (string) $form['menu_autopilot_owned']['#markup']);
   }
 
   /**
