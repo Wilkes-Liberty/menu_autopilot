@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Saving a title, subtitle, or any other field on an automatic child no
+  longer fails as a menu-link removal.** Hiding menu_ui's widget in
+  `#after_build` left `menu[enabled] = 0` because the checkbox was not
+  submitted. A pending revision (content moderation draft) then hit core's
+  “You can only remove the menu link in the published version of this
+  content” constraint, plus `#parents` warnings on the inaccessible
+  element. The existing link is restored on the form state and menu_ui is
+  not allowed to write the managed child. (#31)
+
 ## [1.2.0] — 2026-08-18
 
 ### Added

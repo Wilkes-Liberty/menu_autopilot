@@ -332,12 +332,72 @@ final class NavSyncManagerTest extends KernelTestBase {
 
     $this->assertFalse($form['menu']['#access']);
     $this->assertSame(
-      [$menu_ui_submit, '_menu_autopilot_flush_queued_node_sync'],
+      ['_menu_autopilot_flush_queued_node_sync'],
       $form['actions']['submit']['#submit'],
     );
+    $this->assertNotContains($menu_ui_submit, $form['actions']['submit']['#submit']);
     $this->assertSame(['::submitForm'], $form['actions']['preview']['#submit']);
     $this->assertSame('Menu link', (string) $form['menu_autopilot_owned']['#title']);
     $this->assertStringContainsString('Menu Autopilot', (string) $form['menu_autopilot_owned']['#markup']);
+  }
+
+  /**
+   * Hiding the widget must not look like removing the menu link.
+   *
+   * Menu UI processes input before #after_build. An unrendered checkbox is
+   * enabled=0, and a pending revision then fails with "You can only remove
+   * the menu link in the published version of this content."
+   */
+  public function testHidingManagedMenuDoesNotLookLikeRemoval(): void {
+    $parent = $this->createDynamicParent();
+    $node = $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+
+    $menu_ui_submit = 'Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit';
+    $form_state = new FormState();
+    $form_state->setValue('menu', [
+      'enabled' => 0,
+      'entity_id' => $child->id(),
+      'title' => 'Atlas',
+      'description' => '',
+      'menu_parent' => 'main:',
+      'weight' => (int) $child->getWeight(),
+    ]);
+    $form = [
+      'actions' => [
+        'submit' => [
+          '#type' => 'submit',
+          '#submit' => [$menu_ui_submit],
+        ],
+      ],
+      'menu' => [
+        'link' => [
+          'entity_id' => ['#value' => $child->id()],
+        ],
+      ],
+    ];
+    $form = _menu_autopilot_node_form_after_build($form, $form_state);
+
+    $this->assertFalse($form['menu']['#access']);
+    $this->assertSame(1, (int) $form_state->getValue(['menu', 'enabled']));
+    $this->assertSame((string) $child->id(), (string) $form_state->getValue(['menu', 'entity_id']));
+    $this->assertNotContains($menu_ui_submit, $form['actions']['submit']['#submit']);
+    $this->assertContains('_menu_autopilot_flush_queued_node_sync', $form['actions']['submit']['#submit']);
+
+    $this->enableModules(['menu_ui']);
+    $node->setNewRevision();
+    $node->isDefaultRevision(FALSE);
+    $node->menu = $form_state->getValue('menu');
+    $messages = [];
+    foreach ($node->validate() as $violation) {
+      $messages[] = (string) $violation->getMessage();
+    }
+    $this->assertNotContains(
+      'You can only remove the menu link in the published version of this content.',
+      $messages,
+    );
   }
 
   /**
