@@ -85,9 +85,7 @@ final class NavSyncManager implements DestructableInterface {
     $storage = $this->entityTypeManager->getStorage('node');
     $storage->resetCache($ids);
     foreach ($storage->loadMultiple($ids) as $node) {
-      if ($node instanceof NodeInterface) {
-        $this->syncNode($node);
-      }
+      $this->syncNode($node);
     }
   }
 
