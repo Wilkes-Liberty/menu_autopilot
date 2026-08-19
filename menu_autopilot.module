@@ -198,9 +198,13 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
 
   // Hide menu_ui's widget so editors do not treat this as the node's own
   // link. #after_build is too late to stop input processing: an unrendered
-  // checkbox arrives as enabled=0, and a pending revision then fails with
-  // "You can only remove the menu link in the published version of this
-  // content." Restore the existing link and do not let menu_ui write it.
+  // checkbox arrives as enabled=0, weight/parent drop to the empty defaults,
+  // and a pending revision then fails MenuSettingsConstraint. Restore the
+  // live link and do not let menu_ui write it.
+  //
+  // Stamp #parents on the notice. This element is injected after processing,
+  // so FormErrorHandler's getError() walk would otherwise warn
+  // "Undefined array key #parents" whenever any other field fails validation.
   $form['menu']['#access'] = FALSE;
   $form['menu_autopilot_owned'] = [
     '#type' => 'item',
@@ -208,6 +212,8 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
     '#markup' => t('This page appears in the menu as an automatic child. To change its label or order, edit the parent menu item and open its <em>Menu Autopilot</em> section.'),
     '#weight' => -2,
     '#group' => 'advanced',
+    '#parents' => ['menu_autopilot_owned'],
+    '#array_parents' => ['menu_autopilot_owned'],
   ];
 
   $values = $form_state->getValue('menu');
@@ -216,9 +222,12 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
   }
   $values['enabled'] = 1;
   $values['entity_id'] = $entity_id;
-  if (!isset($values['title']) || $values['title'] === '') {
-    $values['title'] = $link->getTitle();
-  }
+  $values['title'] = $link->getTitle();
+  $values['description'] = (string) $link->getDescription();
+  $values['weight'] = (int) $link->getWeight();
+  $values['menu_name'] = $link->getMenuName();
+  $values['parent'] = $link->getParentId();
+  $values['menu_parent'] = $link->getMenuName() . ':' . $link->getParentId();
   $form_state->setValue('menu', $values);
 
   foreach (array_keys($form['actions'] ?? []) as $action) {
