@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.2] — 2026-08-18
+
 ### Fixed
 - **Child menu label tokens no longer HTML-escape stored titles.** Token
   replacements used the markup API, so an ampersand in a node title or
