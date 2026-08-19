@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.1] — 2026-08-18
+
 ### Fixed
 - **Saving a title, subtitle, or any other field on an automatic child no
   longer fails as a menu-link removal.** Hiding menu_ui's widget in
