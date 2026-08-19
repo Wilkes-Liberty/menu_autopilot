@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.3] — 2026-08-19
+
 ### Fixed
 - **Saving an automatic child no longer prints `#parents` warnings or
   fails a pending-revision menu constraint.** The owned-child notice is
