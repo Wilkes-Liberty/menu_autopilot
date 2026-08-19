@@ -361,6 +361,58 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * The owned-child notice must be a processed element (#parents).
+   *
+   * FormErrorHandler calls FormState::getError() on every child. An
+   * after-build item without #parents warns whenever any other field fails
+   * validation (the editor sees only the PHP warning; the real error is
+   * often on the hidden menu widget).
+   */
+  public function testOwnedNoticeHasParentsSoFormErrorsDoNotWarn(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+
+    $form = [
+      'actions' => [
+        'submit' => [
+          '#type' => 'submit',
+          '#submit' => ['Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit'],
+        ],
+      ],
+      'menu' => [
+        'link' => [
+          'entity_id' => ['#value' => $child->id()],
+        ],
+      ],
+    ];
+    $form_state = new FormState();
+    $form = _menu_autopilot_node_form_after_build($form, $form_state);
+
+    $this->assertSame(['menu_autopilot_owned'], $form['menu_autopilot_owned']['#parents']);
+    $this->assertSame(['menu_autopilot_owned'], $form['menu_autopilot_owned']['#array_parents']);
+
+    // FormErrorHandler calls getError() on every child. The production
+    // warning was this call on the unprocessed notice while another field
+    // had an error. Do not walk the stub form tree (its menu children are
+    // also unprocessed).
+    $form_state->setErrorByName('title', 'Required.');
+    $warnings = [];
+    set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+      $warnings[] = $message;
+      return TRUE;
+    });
+    $form_state->getError($form['menu_autopilot_owned']);
+    restore_error_handler();
+
+    foreach ($warnings as $warning) {
+      $this->assertStringNotContainsString('#parents', $warning);
+    }
+  }
+
+  /**
    * Hiding the widget must not look like removing the menu link.
    *
    * Menu UI processes input before #after_build. An unrendered checkbox is
@@ -379,10 +431,10 @@ final class NavSyncManagerTest extends KernelTestBase {
     $form_state->setValue('menu', [
       'enabled' => 0,
       'entity_id' => $child->id(),
-      'title' => 'Atlas',
+      'title' => '',
       'description' => '',
       'menu_parent' => 'main:',
-      'weight' => (int) $child->getWeight(),
+      'weight' => 0,
     ]);
     $form = [
       'actions' => [
@@ -402,6 +454,12 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertFalse($form['menu']['#access']);
     $this->assertSame(1, (int) $form_state->getValue(['menu', 'enabled']));
     $this->assertSame((string) $child->id(), (string) $form_state->getValue(['menu', 'entity_id']));
+    $this->assertSame($child->getTitle(), $form_state->getValue(['menu', 'title']));
+    $this->assertSame((int) $child->getWeight(), (int) $form_state->getValue(['menu', 'weight']));
+    $this->assertSame(
+      $child->getMenuName() . ':' . $child->getParentId(),
+      $form_state->getValue(['menu', 'menu_parent']),
+    );
     $this->assertNotContains($menu_ui_submit, $form['actions']['submit']['#submit']);
     $this->assertContains('_menu_autopilot_flush_queued_node_sync', $form['actions']['submit']['#submit']);
 
@@ -417,6 +475,9 @@ final class NavSyncManagerTest extends KernelTestBase {
       'You can only remove the menu link in the published version of this content.',
       $messages,
     );
+    foreach ($messages as $message) {
+      $this->assertStringNotContainsString('menu', strtolower($message));
+    }
   }
 
   /**

@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Saving an automatic child no longer prints `#parents` warnings or
+  fails a pending-revision menu constraint.** The owned-child notice is
+  injected in `#after_build` after processing, so it had no `#parents`
+  and `FormErrorHandler` warned whenever any field failed validation.
+  Hidden menu_ui input also dropped weight and parent, which looked
+  like a menu-settings change on a draft. The notice is now a processed
+  element and the live link's title, weight, and parent are restored
+  onto the form state. (#37)
+
 ## [1.2.2] — 2026-08-18
 
 ### Fixed
