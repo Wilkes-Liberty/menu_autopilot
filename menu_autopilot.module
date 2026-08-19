@@ -196,7 +196,11 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
     return $form;
   }
 
-  // Hide menu_ui's widget and leave it nothing to write.
+  // Hide menu_ui's widget so editors do not treat this as the node's own
+  // link. #after_build is too late to stop input processing: an unrendered
+  // checkbox arrives as enabled=0, and a pending revision then fails with
+  // "You can only remove the menu link in the published version of this
+  // content." Restore the existing link and do not let menu_ui write it.
   $form['menu']['#access'] = FALSE;
   $form['menu_autopilot_owned'] = [
     '#type' => 'item',
@@ -205,7 +209,38 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
     '#weight' => -2,
     '#group' => 'advanced',
   ];
+
+  $values = $form_state->getValue('menu');
+  if (!is_array($values)) {
+    $values = [];
+  }
+  $values['enabled'] = 1;
+  $values['entity_id'] = $entity_id;
+  if (!isset($values['title']) || $values['title'] === '') {
+    $values['title'] = $link->getTitle();
+  }
+  $form_state->setValue('menu', $values);
+
+  foreach (array_keys($form['actions'] ?? []) as $action) {
+    if (($form['actions'][$action]['#type'] ?? '') !== 'submit') {
+      continue;
+    }
+    $submit = $form['actions'][$action]['#submit'] ?? [];
+    $form['actions'][$action]['#submit'] = array_values(array_filter(
+      $submit,
+      static fn ($handler): bool => !_menu_autopilot_is_menu_ui_node_submit($handler),
+    ));
+  }
+
   return $form;
+}
+
+/**
+ * Whether a submit handler is menu_ui's node-form writer.
+ */
+function _menu_autopilot_is_menu_ui_node_submit(mixed $handler): bool {
+  return $handler === 'menu_ui_form_node_form_submit'
+    || $handler === 'Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit';
 }
 
 /**
