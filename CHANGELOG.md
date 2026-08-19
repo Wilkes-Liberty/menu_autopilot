@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Child menu label tokens no longer HTML-escape stored titles.** Token
+  replacements used the markup API, so an ampersand in a node title or
+  subtitle was saved as `&amp;` on the menu link. Admin and GraphQL
+  `MenuItem.title` then showed the escaped string, and editing the link
+  did not stick because the next sync rewrote it. (#34)
+
 ## [1.2.1] — 2026-08-18
 
 ### Fixed
