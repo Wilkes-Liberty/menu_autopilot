@@ -148,6 +148,25 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Title patterns store ampersands as plain text, not HTML entities.
+   *
+   * Token::replace() HTML-escapes replacements. Menu titles are plain
+   * text, so "&" must not be stored as "&amp;".
+   *
+   * @covers ::linkTitle
+   * @covers ::syncNode
+   */
+  public function testTitlePatternDoesNotHtmlEscapeAmpersands(): void {
+    $parent = $this->createDynamicParent(['title_pattern' => '[node:title]']);
+    $this->createSolution('Foo & Bar', TRUE);
+
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertSame('Foo & Bar', $child->getTitle());
+    $this->assertStringNotContainsString('&amp;', $child->getTitle());
+  }
+
+  /**
    * Every Existing children policy has an operator-facing explanation.
    */
   public function testExistingChildrenHelpCoversEveryPolicy(): void {

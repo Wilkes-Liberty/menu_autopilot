@@ -620,18 +620,19 @@ final class NavSyncManager implements DestructableInterface {
    * The title for a managed child link.
    *
    * When the source defines a `title_pattern`, it is run through the token
-   * service (e.g. `[node:title]`, `[node:field_nav_title]`) so editors can give
-   * nav a shorter or decorated label than the page title; unreplaced tokens are
-   * cleared. Falls back to the node label when no pattern is set or the pattern
-   * resolves to an empty string. URIs are never tokenized — a managed link
-   * always points at `entity:node/<nid>`.
+   * service as plain text (e.g. `[node:title]`, `[node:field_nav_title]`) so
+   * editors can give nav a shorter or decorated label than the page title;
+   * unreplaced tokens are cleared. Markup replace would HTML-escape
+   * ampersands into the stored title. Falls back to the node label when no
+   * pattern is set or the pattern resolves to an empty string. URIs are
+   * never tokenized — a managed link always points at `entity:node/<nid>`.
    */
   private function linkTitle(NodeInterface $node, array $source): string {
     $pattern = trim((string) ($source['title_pattern'] ?? ''));
     if ($pattern === '') {
       return (string) $node->label();
     }
-    $title = trim($this->token->replace(
+    $title = trim($this->token->replacePlain(
       $pattern,
       ['node' => $node],
       ['clear' => TRUE, 'langcode' => $node->language()->getId()],
