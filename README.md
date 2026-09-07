@@ -86,4 +86,4 @@ Composer.
 
 ## Maintainers
 
-Built by Jeremy Michael Cerda and [Wilkes & Liberty, LLC](https://wilkesliberty.com).
+Built by [Jeremy Michael Cerda](https://www.drupal.org/u/jmcerda) and [Wilkes & Liberty, LLC](https://wilkesliberty.com).
