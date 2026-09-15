@@ -913,8 +913,9 @@ final class NavSyncManagerTest extends KernelTestBase {
    * Deleting a dynamic parent deletes generated children only.
    *
    * Core reparents children in MenuLinkContent::preDelete before this
-   * module's delete hook. The managed child is removed on that reparent
-   * save; the hand-created sibling is left where core put it.
+   * module's delete hook. The managed child is flagged on that reparent
+   * and removed when the parent is deleted; the hand-created sibling is
+   * left where core put it.
    *
    * @covers ::flagManagedIfParentMoving
    * @covers ::flushPendingManagedDeletes
@@ -952,6 +953,68 @@ final class NavSyncManagerTest extends KernelTestBase {
     $storage->resetCache();
     $this->assertNull($storage->load($managed_id), 'Generated children are removed with the parent.');
     $this->assertInstanceOf(MenuLinkContentInterface::class, $storage->load($extra->id()), 'Hand-created siblings stay.');
+  }
+
+  /**
+   * Reparenting a managed child does not delete it.
+   *
+   * flagManagedIfParentMoving() is only a proxy for core's delete-time
+   * reparent. An editor or API parent change must keep the link.
+   *
+   * @covers ::flagManagedIfParentMoving
+   * @covers ::flushPendingManagedDeletes
+   */
+  public function testReparentingManagedChildDoesNotDeleteIt(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertTrue($this->isManagedLink($child));
+    $child_id = (int) $child->id();
+
+    $elsewhere = MenuLinkContent::create([
+      'title' => 'Elsewhere',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $elsewhere->save();
+
+    $child->set('parent', 'menu_link_content:' . $elsewhere->uuid());
+    $child->save();
+
+    $moved = $this->reloadLink($child_id);
+    $this->assertSame('menu_link_content:' . $elsewhere->uuid(), $moved->getParentId());
+    $this->assertTrue($this->isManagedLink($moved), 'An editor move does not delete the generated child.');
+  }
+
+  /**
+   * The marker backfill does not save parents (which would reconcile).
+   */
+  public function testUpdate10201DoesNotReconcileParents(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+
+    $stale_node = Node::create([
+      'type' => 'solution',
+      'title' => 'Stale',
+      'status' => 0,
+    ]);
+    $stale_node->save();
+    $stale = MenuLinkContent::create([
+      'title' => 'Stale',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $stale_node->id()],
+      'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $stale_node->id()],
+    ]);
+    $stale->save();
+    $this->assertCount(2, $this->childrenOf($parent));
+
+    $this->container->get('module_handler')->loadInclude('menu_autopilot', 'install');
+    menu_autopilot_update_10201();
+
+    $this->assertCount(2, $this->childrenOf($parent), 'A marker backfill must not sync dynamic parents.');
+    $this->assertTrue((bool) $this->reloadLink((int) $parent->id())->get('menu_autopilot_dynamic')->value);
   }
 
   /**

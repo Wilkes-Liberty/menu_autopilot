@@ -38,9 +38,11 @@ final class NavSyncManager implements DestructableInterface {
   private array $queuedNodeIds = [];
 
   /**
-   * Managed child ids to delete after core reparents them off a dying parent.
+   * Managed children to delete after core reparents them off a dying parent.
    *
-   * @var array<int, true>
+   * Keys are child entity ids; values are the parent plugin id they left.
+   *
+   * @var array<int, string>
    */
   private array $pendingManagedDeletes = [];
 
@@ -153,7 +155,9 @@ final class NavSyncManager implements DestructableInterface {
    *
    * MenuLinkContent::preDelete reparents children and saves them before
    * hook_entity_predelete. Compare the in-memory parent to the stored one
-   * during presave (the DB still has the old parent) and delete after save.
+   * during presave (the DB still has the old parent). Deletion waits until
+   * that previous parent is itself deleted, so an editor or API reparent
+   * is not treated as a delete.
    */
   public function flagManagedIfParentMoving(MenuLinkContentInterface $link): void {
     if ($this->syncing || !$this->isManaged($link) || !$link->id()) {
@@ -164,19 +168,34 @@ final class NavSyncManager implements DestructableInterface {
       return;
     }
     if ($stored->getParentId() !== $link->getParentId()) {
-      $this->pendingManagedDeletes[(int) $link->id()] = TRUE;
+      $this->pendingManagedDeletes[(int) $link->id()] = $stored->getParentId();
     }
   }
 
   /**
    * Delete managed children flagged by flagManagedIfParentMoving().
+   *
+   * Only children that were moved off $parent are removed. A parent change
+   * alone is not a delete.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+   *   The parent being deleted.
    */
-  public function flushPendingManagedDeletes(): void {
+  public function flushPendingManagedDeletes(MenuLinkContentInterface $parent): void {
     if ($this->pendingManagedDeletes === [] || $this->syncing) {
       return;
     }
-    $ids = array_keys($this->pendingManagedDeletes);
-    $this->pendingManagedDeletes = [];
+    $from = $parent->getPluginId();
+    $ids = [];
+    foreach ($this->pendingManagedDeletes as $id => $old_parent) {
+      if ($old_parent === $from) {
+        $ids[] = $id;
+        unset($this->pendingManagedDeletes[$id]);
+      }
+    }
+    if ($ids === []) {
+      return;
+    }
     $this->syncing = TRUE;
     try {
       foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
@@ -193,13 +212,15 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * Delete generated children still hanging off a parent being deleted.
    *
-   * Backup for deletes that do not go through MenuLinkContent::preDelete
-   * reparenting. Usually a no-op: core has already moved the children.
+   * Flushes children core already reparented in MenuLinkContent::preDelete.
+   * loadChildren() is then usually empty; it remains a backup for deletes
+   * that do not go through that reparenting.
    */
   public function onParentDeleted(MenuLinkContentInterface $parent): void {
     if ($this->syncing) {
       return;
     }
+    $this->flushPendingManagedDeletes($parent);
     $this->syncing = TRUE;
     try {
       foreach ($this->loadChildren($parent) as $link) {

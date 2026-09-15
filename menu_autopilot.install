@@ -40,11 +40,17 @@ function menu_autopilot_uninstall(bool $is_syncing): void {
 
 /**
  * Add the queryable dynamic-parent marker and backfill existing parents.
+ *
+ * Writes the marker via storage restore() so this does not run entity
+ * save hooks or reconcile menus.
  */
 function menu_autopilot_update_10201(): void {
   _menu_autopilot_install_fields();
 
   $storage = \Drupal::entityTypeManager()->getStorage('menu_link_content');
+  if (!$storage instanceof \Drupal\Core\Entity\ContentEntityStorageInterface) {
+    return;
+  }
   $ids = $storage->getQuery()->accessCheck(FALSE)->execute();
   if ($ids === []) {
     return;
@@ -56,7 +62,7 @@ function menu_autopilot_update_10201(): void {
       continue;
     }
     $link->set('menu_autopilot_dynamic', TRUE);
-    $link->save();
+    $storage->restore($link);
   }
 }
 
