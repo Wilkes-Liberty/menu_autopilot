@@ -912,7 +912,11 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * Deleting a dynamic parent deletes generated children only.
    *
-   * @covers ::onParentDeleted
+   * Core reparents children in MenuLinkContent::preDelete before this
+   * module's delete hook. The managed child is removed on that reparent
+   * save; the hand-created sibling is left where core put it.
+   *
+   * @covers ::deleteManagedIfParentMoved
    */
   public function testDeletingDynamicParentDeletesManagedChildrenOnly(): void {
     $parent = $this->createDynamicParent();

@@ -142,11 +142,40 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
-   * Delete generated children when their parent link is deleted.
+   * Delete a managed child that core just reparented off a deleted parent.
    *
-   * Core does not cascade-delete menu_link_content. Unmanaged siblings stay
-   * (the same orphan parent-id core would leave). Managed children have no
-   * remaining owner, so they are removed rather than stranded.
+   * MenuLinkContent::preDelete moves children to the deleted link's parent
+   * and saves them before hook_entity_predelete runs, so loadChildren() on
+   * the dying parent is already empty. A managed child whose parent id
+   * changes outside our own writes is that reparent — delete it so the
+   * owned flag cannot strand editors. Unmanaged siblings stay.
+   *
+   * @return bool
+   *   TRUE when this link was deleted.
+   */
+  public function deleteManagedIfParentMoved(MenuLinkContentInterface $link): bool {
+    if ($this->syncing || !$this->isManaged($link)) {
+      return FALSE;
+    }
+    $original = $this->originalEntity($link);
+    if ($original === NULL || $original->getParentId() === $link->getParentId()) {
+      return FALSE;
+    }
+    $this->syncing = TRUE;
+    try {
+      $link->delete();
+    }
+    finally {
+      $this->syncing = FALSE;
+    }
+    return TRUE;
+  }
+
+  /**
+   * Delete generated children still hanging off a parent being deleted.
+   *
+   * Backup for deletes that do not go through MenuLinkContent::preDelete
+   * reparenting. Usually a no-op: core has already moved the children.
    */
   public function onParentDeleted(MenuLinkContentInterface $parent): void {
     if ($this->syncing) {
@@ -748,6 +777,31 @@ final class NavSyncManager implements DestructableInterface {
     }
     $value = $link->get('menu_autopilot')->first()->getValue();
     return is_array($value) ? $value : [];
+  }
+
+  /**
+   * The unchanged entity core attached for an update, if any.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface|null
+   *   The original link, or NULL when core did not keep one.
+   */
+  private function originalEntity(MenuLinkContentInterface $link): ?MenuLinkContentInterface {
+    $original = NULL;
+    $getter = 'getOriginal';
+    if (\is_callable([$link, $getter])) {
+      $candidate = $link->{$getter}();
+      if ($candidate instanceof MenuLinkContentInterface) {
+        $original = $candidate;
+      }
+    }
+    if ($original === NULL) {
+      $vars = get_object_vars($link);
+      $candidate = $vars['original'] ?? NULL;
+      if ($candidate instanceof MenuLinkContentInterface) {
+        $original = $candidate;
+      }
+    }
+    return $original;
   }
 
   /**

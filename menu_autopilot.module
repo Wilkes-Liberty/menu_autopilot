@@ -189,6 +189,9 @@ function _menu_autopilot_react(EntityInterface $entity): void {
   }
   elseif ($entity instanceof MenuLinkContentInterface) {
     $sync->releaseOwnedChildrenIfSourceCleared($entity);
+    if ($sync->deleteManagedIfParentMoved($entity)) {
+      return;
+    }
     $sync->syncParentIfDynamic($entity);
   }
 }
