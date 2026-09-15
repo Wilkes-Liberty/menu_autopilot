@@ -5,41 +5,83 @@
  * Install, update, and uninstall functions for Menu Autopilot.
  */
 
+use Drupal\menu_link_content\MenuLinkContentInterface;
+
 /**
  * Implements hook_install().
  *
- * Installs the `menu_autopilot` base field on menu_link_content. The field is
+ * Installs the Autopilot base fields on menu_link_content. The fields are
  * declared in menu_autopilot_entity_base_field_info() (code, not exported
- * config), so nothing else creates its storage — the install must run on every
- * path: a normal `drush en`, a config import that enables the module, and a
- * site install from existing config. It therefore does NOT bail out when
- * `$is_syncing` is TRUE (that guard is for modules that create config entities
- * a sync would recreate; a base field is not config). Idempotent: skipped when
- * the storage already exists.
+ * config), so nothing else creates their storage — the install must run on
+ * every path: a normal `drush en`, a config import that enables the module,
+ * and a site install from existing config. It therefore does NOT bail out
+ * when `$is_syncing` is TRUE (that guard is for modules that create config
+ * entities a sync would recreate; a base field is not config). Idempotent:
+ * skipped when the storage already exists.
  */
 function menu_autopilot_install(bool $is_syncing): void {
-  $update_manager = \Drupal::entityDefinitionUpdateManager();
-  if (!$update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
-    $update_manager->installFieldStorageDefinition(
-      'menu_autopilot',
-      'menu_link_content',
-      'menu_autopilot',
-      _menu_autopilot_base_field()
-    );
-  }
+  _menu_autopilot_install_fields();
 }
 
 /**
  * Implements hook_uninstall().
  *
- * Removes the `menu_autopilot` base field. Links the module generated are
- * ordinary menu_link_content entities and are left in place; only the
- * bookkeeping field is dropped. Runs on every uninstall path for the same
- * reason install does — the storage is code-defined, not config.
+ * Removes the Autopilot base fields. Links the module generated are ordinary
+ * menu_link_content entities and are left in place; only the bookkeeping
+ * fields are dropped. Runs on every uninstall path for the same reason
+ * install does — the storage is code-defined, not config.
  */
 function menu_autopilot_uninstall(bool $is_syncing): void {
   $update_manager = \Drupal::entityDefinitionUpdateManager();
-  if ($definition = $update_manager->getFieldStorageDefinition('menu_autopilot', 'menu_link_content')) {
-    $update_manager->uninstallFieldStorageDefinition($definition);
+  foreach (['menu_autopilot', 'menu_autopilot_dynamic'] as $name) {
+    if ($definition = $update_manager->getFieldStorageDefinition($name, 'menu_link_content')) {
+      $update_manager->uninstallFieldStorageDefinition($definition);
+    }
+  }
+}
+
+/**
+ * Add the queryable dynamic-parent marker and backfill existing parents.
+ */
+function menu_autopilot_update_10201(): void {
+  _menu_autopilot_install_fields();
+
+  $storage = \Drupal::entityTypeManager()->getStorage('menu_link_content');
+  $ids = $storage->getQuery()->accessCheck(FALSE)->execute();
+  if ($ids === []) {
+    return;
+  }
+  foreach ($storage->loadMultiple($ids) as $link) {
+    if (!$link instanceof MenuLinkContentInterface) {
+      continue;
+    }
+    $data = _menu_autopilot_link_data($link);
+    $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
+    if (!$dynamic) {
+      continue;
+    }
+    $link->set('menu_autopilot_dynamic', TRUE);
+    $link->save();
+  }
+}
+
+/**
+ * Installs any missing Autopilot field storage on menu_link_content.
+ */
+function _menu_autopilot_install_fields(): void {
+  $update_manager = \Drupal::entityDefinitionUpdateManager();
+  $fields = [
+    'menu_autopilot' => _menu_autopilot_base_field(),
+    'menu_autopilot_dynamic' => _menu_autopilot_dynamic_field(),
+  ];
+  foreach ($fields as $name => $definition) {
+    if (!$update_manager->getFieldStorageDefinition($name, 'menu_link_content')) {
+      $update_manager->installFieldStorageDefinition(
+        $name,
+        'menu_link_content',
+        'menu_autopilot',
+        $definition
+      );
+    }
   }
 }

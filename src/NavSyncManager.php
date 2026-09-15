@@ -94,8 +94,10 @@ final class NavSyncManager implements DestructableInterface {
    */
   public function syncNode(NodeInterface $node): void {
     foreach ($this->findDynamicParents() as $parent) {
-      if ($this->parentAffectedByNode($parent, $node)) {
-        $this->syncParent($parent);
+      $siblings = $this->loadChildren($parent);
+      $partition = $this->partitionChildren($siblings);
+      if ($this->parentAffectedByNode($parent, $node, $partition['owned'])) {
+        $this->doSyncParent($parent, $siblings, $partition);
       }
     }
   }
@@ -118,36 +120,112 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing) {
       return;
     }
+    $siblings = $this->loadChildren($parent);
+    $this->doSyncParent($parent, $siblings, $this->partitionChildren($siblings));
+  }
+
+  /**
+   * Clear sticky owned flags when a parent is no longer dynamic.
+   *
+   * “Nothing (curated by hand)” keeps the child links; it only drops the
+   * managed bookkeeping so editors can reclaim them. Compare original vs
+   * current so API and form saves share one path.
+   */
+  public function releaseOwnedChildrenIfSourceCleared(MenuLinkContentInterface $link): void {
+    if ($this->syncing || $this->isManaged($link)) {
+      return;
+    }
+    $original = $this->originalLink($link);
+    if ($original === NULL) {
+      return;
+    }
+    $was_dynamic = ($this->getSource($original)['type'] ?? 'none') !== 'none';
+    $is_dynamic = ($this->getSource($link)['type'] ?? 'none') !== 'none';
+    if ($was_dynamic && !$is_dynamic) {
+      $this->releaseOwnedChildren($link);
+    }
+  }
+
+  /**
+   * Delete generated children when their parent link is deleted.
+   *
+   * Core does not cascade-delete menu_link_content. Unmanaged siblings stay
+   * (the same orphan parent-id core would leave). Managed children have no
+   * remaining owner, so they are removed rather than stranded.
+   */
+  public function onParentDeleted(MenuLinkContentInterface $parent): void {
+    if ($this->syncing) {
+      return;
+    }
+    $this->syncing = TRUE;
+    try {
+      foreach ($this->loadChildren($parent) as $link) {
+        if ($this->isManaged($link)) {
+          $link->delete();
+        }
+      }
+    }
+    finally {
+      $this->syncing = FALSE;
+    }
+  }
+
+  /**
+   * Reconcile one parent from an already-loaded sibling set.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+   *   The dynamic parent.
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $siblings
+   *   Direct children keyed by entity id.
+   * @param array{
+   *   owned: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
+   *   adoptable: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
+   *   append_weight: int
+   * } $partition
+   *   In-memory owned / adoptable / append-weight split of $siblings.
+   */
+  private function doSyncParent(MenuLinkContentInterface $parent, array $siblings, array $partition): void {
+    if ($this->syncing) {
+      return;
+    }
     $source = $this->getSource($parent);
     $desired = $this->resolver->resolve($source);
-    $existing = $this->ownedChildren($parent);
+    $existing = $partition['owned'];
     $nodes = $desired ? $this->entityTypeManager->getStorage('node')->loadMultiple($desired) : [];
 
     $this->syncing = TRUE;
     try {
       $policy = $this->existingChildrenPolicy($source);
       if (!empty($source['reparent_matches'])) {
-        $this->reparentMatchingLinks($parent, $desired);
+        foreach ($this->reparentMatchingLinks($parent, $desired) as $id => $link) {
+          $siblings[$id] = $link;
+        }
+        $partition = $this->partitionChildren($siblings);
+        $existing = $partition['owned'];
       }
       if ($policy === 'replace') {
-        foreach ($this->loadChildren($parent) as $link) {
+        foreach ($siblings as $id => $link) {
           if (!$this->isManaged($link)) {
             $link->delete();
+            unset($siblings[$id]);
           }
         }
+        $partition = $this->partitionChildren($siblings);
+        $existing = $partition['owned'];
       }
 
       $weight = 0;
       $seen = [];
       $preserve = $this->preservesEditorOrder($source);
-      $append_weight = $preserve ? $this->nextAppendWeight($parent) : 0;
-      $adoptable = $policy === 'replace' ? [] : $this->adoptableChildren($parent);
+      $append_weight = $preserve ? $partition['append_weight'] : 0;
+      $adoptable = $policy === 'replace' ? [] : $partition['adoptable'];
+      $owned = $existing;
       foreach ($desired as $nid) {
         $node = $nodes[$nid] ?? NULL;
         if (!$node instanceof NodeInterface) {
           continue;
         }
-        if ($link = $existing[$nid] ?? NULL) {
+        if ($link = $owned[$nid] ?? NULL) {
           $this->updateChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
         }
         elseif ($link = $adoptable[$nid] ?? NULL) {
@@ -160,9 +238,12 @@ final class NavSyncManager implements DestructableInterface {
             continue;
           }
           $this->adoptChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
+          $owned[$nid] = $link;
         }
         else {
-          $this->createChild($parent, $node, $source, $preserve ? $append_weight++ : $weight);
+          $link = $this->createChild($parent, $node, $source, $preserve ? $append_weight++ : $weight);
+          $owned[$nid] = $link;
+          $siblings[(int) $link->id()] = $link;
         }
         $seen[$nid] = TRUE;
         if (!$preserve) {
@@ -173,23 +254,24 @@ final class NavSyncManager implements DestructableInterface {
       foreach ($existing as $nid => $link) {
         if (empty($seen[$nid])) {
           $link->delete();
+          unset($owned[$nid], $siblings[(int) $link->id()]);
         }
       }
       // Drop unmanaged twins of a node we already manage. Hand-created
-      // extras (and add-only matches we left unmanaged) are not in
-      // ownedChildren(), so they stay.
-      $owned = $this->ownedChildren($parent);
-      foreach ($this->loadChildren($parent) as $link) {
+      // extras (and add-only matches we left unmanaged) are not in $owned,
+      // so they stay.
+      foreach ($siblings as $id => $link) {
         if ($this->isManaged($link)) {
           continue;
         }
         $nid = $this->nodeIdFromLink($link);
         if ($nid !== NULL && isset($owned[$nid])) {
           $link->delete();
+          unset($siblings[$id]);
         }
       }
       if ($policy === 'adopt_prune') {
-        foreach ($this->loadChildren($parent) as $link) {
+        foreach ($siblings as $link) {
           if (!$this->isManaged($link)) {
             $link->delete();
           }
@@ -292,12 +374,18 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * All dynamic parent links across the managed menus.
    *
+   * Uses the queryable `menu_autopilot_dynamic` marker so this does not
+   * hydrate every menu_link_content in a managed menu. The map field remains
+   * the descriptor; the boolean is only an index. A cheap PHP check still
+   * drops a stale marker.
+   *
    * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
    *   The parent links that have a source descriptor.
    */
   private function findDynamicParents(): array {
     $ids = $this->menuLinkStorage()->getQuery()
       ->condition('menu_name', $this->managedMenus(), 'IN')
+      ->condition('menu_autopilot_dynamic', TRUE)
       ->accessCheck(FALSE)
       ->execute();
     $parents = [];
@@ -313,45 +401,37 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
-   * Managed child links under a parent, keyed by their source node id.
+   * Split already-loaded siblings into owned, adoptable, and extras.
    *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
-   *   The managed child links, keyed by source node id.
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $siblings
+   *   Direct children keyed by entity id.
+   *
+   * @return array{
+   *   owned: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
+   *   adoptable: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
+   *   append_weight: int
+   * }
+   *   Owned and adoptable links keyed by node id, plus the next append weight.
    */
-  private function ownedChildren(MenuLinkContentInterface $parent): array {
-    $children = [];
-    foreach ($this->loadChildren($parent) as $link) {
+  private function partitionChildren(array $siblings): array {
+    $owned = [];
+    $adoptable = [];
+    $max_weight = -1;
+    foreach ($siblings as $link) {
+      $max_weight = max($max_weight, (int) $link->getWeight());
       $data = $this->getData($link);
       if (!empty($data['managed']) && !empty($data['node'])) {
-        $children[(int) $data['node']] = $link;
+        $owned[(int) $data['node']] = $link;
+      }
+      elseif (($nid = $this->nodeIdFromLink($link)) !== NULL && !isset($adoptable[$nid])) {
+        $adoptable[$nid] = $link;
       }
     }
-    return $children;
-  }
-
-  /**
-   * Unmanaged children under a parent that already point at a node.
-   *
-   * Used when a parent is first marked dynamic: existing hand-created links
-   * to source nodes are adopted instead of duplicated. Children that do not
-   * resolve to a node (or that are already managed) are ignored so curated
-   * extras stay put. Keyed by node id; the first match wins.
-   *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
-   *   Unmanaged child links keyed by the node they already target.
-   */
-  private function adoptableChildren(MenuLinkContentInterface $parent): array {
-    $children = [];
-    foreach ($this->loadChildren($parent) as $link) {
-      if ($this->isManaged($link)) {
-        continue;
-      }
-      $nid = $this->nodeIdFromLink($link);
-      if ($nid !== NULL && !isset($children[$nid])) {
-        $children[$nid] = $link;
-      }
-    }
-    return $children;
+    return [
+      'owned' => $owned,
+      'adoptable' => $adoptable,
+      'append_weight' => $max_weight + 1,
+    ];
   }
 
   /**
@@ -465,10 +545,13 @@ final class NavSyncManager implements DestructableInterface {
    *   The dynamic parent that should receive the matches.
    * @param int[] $desired
    *   Source node ids this parent wants as children.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
+   *   Links moved under the parent, keyed by entity id.
    */
-  private function reparentMatchingLinks(MenuLinkContentInterface $parent, array $desired): void {
+  private function reparentMatchingLinks(MenuLinkContentInterface $parent, array $desired): array {
     if ($desired === []) {
-      return;
+      return [];
     }
     $wanted = array_fill_keys($desired, TRUE);
     $protected = ['menu_link_content:' . $parent->uuid() => TRUE];
@@ -479,6 +562,7 @@ final class NavSyncManager implements DestructableInterface {
       ->condition('menu_name', $parent->getMenuName())
       ->accessCheck(FALSE)
       ->execute();
+    $moved = [];
     foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
       if (!$link instanceof MenuLinkContentInterface || $this->isManaged($link)) {
         continue;
@@ -495,15 +579,20 @@ final class NavSyncManager implements DestructableInterface {
       }
       $link->set('parent', 'menu_link_content:' . $parent->uuid());
       $link->save();
+      $moved[(int) $link->id()] = $link;
     }
+    return $moved;
   }
 
   /**
    * Whether a node change could add, remove, or update a link under a parent.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $owned
+   *   Already-partitioned owned children keyed by node id.
    */
-  private function parentAffectedByNode(MenuLinkContentInterface $parent, NodeInterface $node): bool {
+  private function parentAffectedByNode(MenuLinkContentInterface $parent, NodeInterface $node, array $owned): bool {
     // The parent already has an owned link (it may need updating or removing).
-    if (isset($this->ownedChildren($parent)[(int) $node->id()])) {
+    if (isset($owned[(int) $node->id()])) {
       return TRUE;
     }
     // Otherwise, the node may newly match this parent's source.
@@ -553,9 +642,12 @@ final class NavSyncManager implements DestructableInterface {
 
   /**
    * Create a managed child link for a node under a parent.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface
+   *   The saved child link.
    */
-  private function createChild(MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): void {
-    MenuLinkContent::create([
+  private function createChild(MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): MenuLinkContentInterface {
+    $link = MenuLinkContent::create([
       'menu_name' => $parent->getMenuName(),
       'parent' => 'menu_link_content:' . $parent->uuid(),
       'title' => $this->linkTitle($node, $source),
@@ -563,7 +655,9 @@ final class NavSyncManager implements DestructableInterface {
       'weight' => $weight,
       'enabled' => TRUE,
       'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $node->id()],
-    ])->save();
+    ]);
+    $link->save();
+    return $link;
   }
 
   /**
@@ -600,20 +694,6 @@ final class NavSyncManager implements DestructableInterface {
    */
   private function preservesEditorOrder(array $source): bool {
     return ($source['type'] ?? '') !== 'manual' && ($source['sort'] ?? '') === 'preserve';
-  }
-
-  /**
-   * Weight for a newly created child when the editor order is preserved.
-   *
-   * Appends after every current sibling so a new published node does not
-   * land in the middle of a hand-arranged list.
-   */
-  private function nextAppendWeight(MenuLinkContentInterface $parent): int {
-    $max = -1;
-    foreach ($this->loadChildren($parent) as $link) {
-      $max = max($max, (int) $link->getWeight());
-    }
-    return $max + 1;
   }
 
   /**
@@ -677,6 +757,41 @@ final class NavSyncManager implements DestructableInterface {
     }
     $value = $link->get('menu_autopilot')->first()->getValue();
     return is_array($value) ? $value : [];
+  }
+
+  /**
+   * The prior revision of a link during an entity update, if core provided one.
+   *
+   * @return \Drupal\menu_link_content\MenuLinkContentInterface|null
+   *   The original link, or NULL when core did not keep one.
+   */
+  private function originalLink(MenuLinkContentInterface $link): ?MenuLinkContentInterface {
+    if (method_exists($link, 'getOriginal')) {
+      $original = $link->getOriginal();
+      if ($original instanceof MenuLinkContentInterface) {
+        return $original;
+      }
+    }
+    $original = $link->original ?? NULL;
+    return $original instanceof MenuLinkContentInterface ? $original : NULL;
+  }
+
+  /**
+   * Drop managed bookkeeping on children; keep the links themselves.
+   */
+  private function releaseOwnedChildren(MenuLinkContentInterface $parent): void {
+    $this->syncing = TRUE;
+    try {
+      foreach ($this->loadChildren($parent) as $link) {
+        if ($this->isManaged($link)) {
+          $link->set('menu_autopilot', NULL);
+          $link->save();
+        }
+      }
+    }
+    finally {
+      $this->syncing = FALSE;
+    }
   }
 
   /**
