@@ -136,20 +136,27 @@ function menu_autopilot_entity_update(EntityInterface $entity): void {
 }
 
 /**
- * Implements hook_entity_delete().
+ * Implements hook_entity_predelete().
+ *
+ * Runs while the parent is still queryable. hook_entity_delete is too late:
+ * children are looked up by the parent's uuid and menu name.
  */
-function menu_autopilot_entity_delete(EntityInterface $entity): void {
-  // A deleted node is already gone from storage, so re-syncing any parent that
-  // owned a link for it drops that link. A deleted parent must not leave
-  // sticky managed children with no owner.
-  if ($entity instanceof NodeInterface) {
-    _menu_autopilot_react($entity);
-    return;
-  }
+function menu_autopilot_entity_predelete(EntityInterface $entity): void {
   if ($entity instanceof MenuLinkContentInterface) {
     /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
     $sync = \Drupal::service('menu_autopilot.sync_manager');
     $sync->onParentDeleted($entity);
+  }
+}
+
+/**
+ * Implements hook_entity_delete().
+ */
+function menu_autopilot_entity_delete(EntityInterface $entity): void {
+  // A deleted node is already gone from storage, so re-syncing any parent that
+  // owned a link for it drops that link.
+  if ($entity instanceof NodeInterface) {
+    _menu_autopilot_react($entity);
   }
 }
 

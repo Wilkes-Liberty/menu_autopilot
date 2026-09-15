@@ -5,8 +5,6 @@
  * Install, update, and uninstall functions for Menu Autopilot.
  */
 
-use Drupal\menu_link_content\MenuLinkContentInterface;
-
 /**
  * Implements hook_install().
  *
@@ -52,9 +50,6 @@ function menu_autopilot_update_10201(): void {
     return;
   }
   foreach ($storage->loadMultiple($ids) as $link) {
-    if (!$link instanceof MenuLinkContentInterface) {
-      continue;
-    }
     $data = _menu_autopilot_link_data($link);
     $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
     if (!$dynamic) {

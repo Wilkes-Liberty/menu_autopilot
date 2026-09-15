@@ -128,22 +128,17 @@ final class NavSyncManager implements DestructableInterface {
    * Clear sticky owned flags when a parent is no longer dynamic.
    *
    * “Nothing (curated by hand)” keeps the child links; it only drops the
-   * managed bookkeeping so editors can reclaim them. Compare original vs
-   * current so API and form saves share one path.
+   * managed bookkeeping so editors can reclaim them. Any non-dynamic parent
+   * save is enough — leftover owned flags with no source are orphans.
    */
   public function releaseOwnedChildrenIfSourceCleared(MenuLinkContentInterface $link): void {
     if ($this->syncing || $this->isManaged($link)) {
       return;
     }
-    $original = $this->originalLink($link);
-    if ($original === NULL) {
+    if (($this->getSource($link)['type'] ?? 'none') !== 'none') {
       return;
     }
-    $was_dynamic = ($this->getSource($original)['type'] ?? 'none') !== 'none';
-    $is_dynamic = ($this->getSource($link)['type'] ?? 'none') !== 'none';
-    if ($was_dynamic && !$is_dynamic) {
-      $this->releaseOwnedChildren($link);
-    }
+    $this->releaseOwnedChildren($link);
   }
 
   /**
@@ -177,12 +172,8 @@ final class NavSyncManager implements DestructableInterface {
    *   The dynamic parent.
    * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $siblings
    *   Direct children keyed by entity id.
-   * @param array{
-   *   owned: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
-   *   adoptable: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
-   *   append_weight: int
-   * } $partition
-   *   In-memory owned / adoptable / append-weight split of $siblings.
+   * @param array $partition
+   *   Keys owned and adoptable (node id => link) plus append_weight.
    */
   private function doSyncParent(MenuLinkContentInterface $parent, array $siblings, array $partition): void {
     if ($this->syncing) {
@@ -406,12 +397,8 @@ final class NavSyncManager implements DestructableInterface {
    * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $siblings
    *   Direct children keyed by entity id.
    *
-   * @return array{
-   *   owned: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
-   *   adoptable: array<int, \Drupal\menu_link_content\MenuLinkContentInterface>,
-   *   append_weight: int
-   * }
-   *   Owned and adoptable links keyed by node id, plus the next append weight.
+   * @return array
+   *   Keys owned and adoptable (node id => link) plus append_weight.
    */
   private function partitionChildren(array $siblings): array {
     $owned = [];
@@ -587,6 +574,10 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * Whether a node change could add, remove, or update a link under a parent.
    *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+   *   The dynamic parent.
+   * @param \Drupal\node\NodeInterface $node
+   *   The node that changed.
    * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $owned
    *   Already-partitioned owned children keyed by node id.
    */
@@ -757,23 +748,6 @@ final class NavSyncManager implements DestructableInterface {
     }
     $value = $link->get('menu_autopilot')->first()->getValue();
     return is_array($value) ? $value : [];
-  }
-
-  /**
-   * The prior revision of a link during an entity update, if core provided one.
-   *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface|null
-   *   The original link, or NULL when core did not keep one.
-   */
-  private function originalLink(MenuLinkContentInterface $link): ?MenuLinkContentInterface {
-    if (method_exists($link, 'getOriginal')) {
-      $original = $link->getOriginal();
-      if ($original instanceof MenuLinkContentInterface) {
-        return $original;
-      }
-    }
-    $original = $link->original ?? NULL;
-    return $original instanceof MenuLinkContentInterface ? $original : NULL;
   }
 
   /**
