@@ -916,7 +916,8 @@ final class NavSyncManagerTest extends KernelTestBase {
    * module's delete hook. The managed child is removed on that reparent
    * save; the hand-created sibling is left where core put it.
    *
-   * @covers ::deleteManagedIfParentMoved
+   * @covers ::flagManagedIfParentMoving
+   * @covers ::flushPendingManagedDeletes
    */
   public function testDeletingDynamicParentDeletesManagedChildrenOnly(): void {
     $parent = $this->createDynamicParent();

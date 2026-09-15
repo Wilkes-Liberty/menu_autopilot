@@ -37,6 +37,13 @@ final class NavSyncManager implements DestructableInterface {
    */
   private array $queuedNodeIds = [];
 
+  /**
+   * Managed child ids to delete after core reparents them off a dying parent.
+   *
+   * @var array<int, true>
+   */
+  private array $pendingManagedDeletes = [];
+
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
     private readonly ConfigFactoryInterface $configFactory,
@@ -142,33 +149,45 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
-   * Delete a managed child that core just reparented off a deleted parent.
+   * Note a managed child whose parent is changing outside our own writes.
    *
-   * MenuLinkContent::preDelete moves children to the deleted link's parent
-   * and saves them before hook_entity_predelete runs, so loadChildren() on
-   * the dying parent is already empty. A managed child whose parent id
-   * changes outside our own writes is that reparent — delete it so the
-   * owned flag cannot strand editors. Unmanaged siblings stay.
-   *
-   * @return bool
-   *   TRUE when this link was deleted.
+   * MenuLinkContent::preDelete reparents children and saves them before
+   * hook_entity_predelete. Compare the in-memory parent to the stored one
+   * during presave (the DB still has the old parent) and delete after save.
    */
-  public function deleteManagedIfParentMoved(MenuLinkContentInterface $link): bool {
-    if ($this->syncing || !$this->isManaged($link)) {
-      return FALSE;
+  public function flagManagedIfParentMoving(MenuLinkContentInterface $link): void {
+    if ($this->syncing || !$this->isManaged($link) || !$link->id()) {
+      return;
     }
-    $original = $this->originalEntity($link);
-    if ($original === NULL || $original->getParentId() === $link->getParentId()) {
-      return FALSE;
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    if (!$stored instanceof MenuLinkContentInterface) {
+      return;
     }
+    if ($stored->getParentId() !== $link->getParentId()) {
+      $this->pendingManagedDeletes[(int) $link->id()] = TRUE;
+    }
+  }
+
+  /**
+   * Delete managed children flagged by flagManagedIfParentMoving().
+   */
+  public function flushPendingManagedDeletes(): void {
+    if ($this->pendingManagedDeletes === [] || $this->syncing) {
+      return;
+    }
+    $ids = array_keys($this->pendingManagedDeletes);
+    $this->pendingManagedDeletes = [];
     $this->syncing = TRUE;
     try {
-      $link->delete();
+      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+        if ($link instanceof MenuLinkContentInterface && $this->isManaged($link)) {
+          $link->delete();
+        }
+      }
     }
     finally {
       $this->syncing = FALSE;
     }
-    return TRUE;
   }
 
   /**
@@ -777,31 +796,6 @@ final class NavSyncManager implements DestructableInterface {
     }
     $value = $link->get('menu_autopilot')->first()->getValue();
     return is_array($value) ? $value : [];
-  }
-
-  /**
-   * The unchanged entity core attached for an update, if any.
-   *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface|null
-   *   The original link, or NULL when core did not keep one.
-   */
-  private function originalEntity(MenuLinkContentInterface $link): ?MenuLinkContentInterface {
-    $original = NULL;
-    $getter = 'getOriginal';
-    if (\is_callable([$link, $getter])) {
-      $candidate = $link->{$getter}();
-      if ($candidate instanceof MenuLinkContentInterface) {
-        $original = $candidate;
-      }
-    }
-    if ($original === NULL) {
-      $vars = get_object_vars($link);
-      $candidate = $vars['original'] ?? NULL;
-      if ($candidate instanceof MenuLinkContentInterface) {
-        $original = $candidate;
-      }
-    }
-    return $original;
   }
 
   /**

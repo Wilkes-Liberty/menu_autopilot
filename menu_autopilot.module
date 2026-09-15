@@ -113,12 +113,17 @@ function _menu_autopilot_dynamic_field() {
  * Implements hook_entity_presave().
  */
 function menu_autopilot_entity_presave(EntityInterface $entity): void {
-  if (!$entity instanceof MenuLinkContentInterface || !$entity->hasField('menu_autopilot_dynamic')) {
+  if (!$entity instanceof MenuLinkContentInterface) {
     return;
   }
-  $data = _menu_autopilot_link_data($entity);
-  $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
-  $entity->set('menu_autopilot_dynamic', $dynamic);
+  if ($entity->hasField('menu_autopilot_dynamic')) {
+    $data = _menu_autopilot_link_data($entity);
+    $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
+    $entity->set('menu_autopilot_dynamic', $dynamic);
+  }
+  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+  $sync = \Drupal::service('menu_autopilot.sync_manager');
+  $sync->flagManagedIfParentMoving($entity);
 }
 
 /**
@@ -189,9 +194,7 @@ function _menu_autopilot_react(EntityInterface $entity): void {
   }
   elseif ($entity instanceof MenuLinkContentInterface) {
     $sync->releaseOwnedChildrenIfSourceCleared($entity);
-    if ($sync->deleteManagedIfParentMoved($entity)) {
-      return;
-    }
+    $sync->flushPendingManagedDeletes();
     $sync->syncParentIfDynamic($entity);
   }
 }
