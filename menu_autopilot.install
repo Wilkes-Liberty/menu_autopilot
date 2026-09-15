@@ -5,7 +5,6 @@
  * Install, update, and uninstall functions for Menu Autopilot.
  */
 
-use Drupal\Core\Entity\Sql\DefaultTableMapping;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 
 /**
@@ -53,10 +52,6 @@ function menu_autopilot_update_10201(): void {
 
   /** @var \Drupal\Core\Entity\Sql\SqlContentEntityStorage $storage */
   $storage = \Drupal::entityTypeManager()->getStorage('menu_link_content');
-  $mapping = $storage->getTableMapping();
-  if (!$mapping instanceof DefaultTableMapping) {
-    return;
-  }
   $ids = $storage->getQuery()->accessCheck(FALSE)->execute();
   if ($ids === []) {
     return;
@@ -66,15 +61,9 @@ function menu_autopilot_update_10201(): void {
     return;
   }
   $field_storage = $definitions['menu_autopilot_dynamic'];
+  $mapping = $storage->getTableMapping();
   $table = $mapping->getFieldTableName('menu_autopilot_dynamic');
   $column = $mapping->getFieldColumnName($field_storage, 'value');
-  $id_key = $mapping->requiresDedicatedTableStorage($field_storage) ? 'entity_id' : 'id';
-  $tables = [$table];
-  $revision_data = $mapping->getRevisionDataTable();
-  // Shared-table fields only get a revision-data column when revisionable.
-  if ($field_storage->isRevisionable() && is_string($revision_data) && $revision_data !== '' && $table === $mapping->getDataTable()) {
-    $tables[] = $revision_data;
-  }
 
   $connection = \Drupal::database();
   foreach ($storage->loadMultiple($ids) as $link) {
@@ -86,12 +75,10 @@ function menu_autopilot_update_10201(): void {
     if (!$dynamic) {
       continue;
     }
-    foreach ($tables as $table_name) {
-      $connection->update($table_name)
-        ->fields([$column => 1])
-        ->condition($id_key, $link->id())
-        ->execute();
-    }
+    $connection->update($table)
+      ->fields([$column => 1])
+      ->condition('id', $link->id())
+      ->execute();
   }
 }
 
