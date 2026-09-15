@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Parent sync loads each parent’s children once** and partitions them
+  in memory (owned / adoptable / extras) instead of re-querying on every
+  policy branch.
+- **Dynamic parents are found by a queryable boolean marker**
+  (`menu_autopilot_dynamic`) instead of hydrating every link in a managed
+  menu and PHP-filtering the serialized map. The map field remains the
+  source descriptor.
+
+### Fixed
+- **Turning a parent back to “Nothing (curated by hand)” no longer
+  leaves sticky managed children.** The owned flag is cleared so editors
+  can reclaim “Provide a menu link”. The links themselves stay.
+- **Deleting a dynamic parent deletes its generated children.**
+  Hand-created siblings are left as core would leave them.
+
 ## [1.2.3] — 2026-08-19
 
 ### Fixed

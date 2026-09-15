@@ -870,6 +870,178 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * Turning the source off clears owned flags and leaves the child links.
+   *
+   * @covers ::releaseOwnedChildrenIfSourceCleared
+   */
+  public function testTurningSourceOffClearsManagedKeepsChildren(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children);
+    $child = reset($children);
+    $this->assertTrue($this->isManagedLink($child));
+    $this->assertTrue((bool) $parent->get('menu_autopilot_dynamic')->value);
+
+    $parent->set('menu_autopilot', NULL);
+    $parent->save();
+
+    $child = $this->reloadLink((int) $child->id());
+    $this->assertFalse($this->isManagedLink($child), 'The owned flag is cleared so editors can reclaim the link.');
+    $this->assertCount(1, $this->childrenOf($parent), '“Nothing (curated by hand)” keeps the tree.');
+    $this->assertFalse((bool) $this->reloadLink((int) $parent->id())->get('menu_autopilot_dynamic')->value);
+
+    $form = [
+      'actions' => [
+        'submit' => [
+          '#type' => 'submit',
+          '#submit' => ['Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit'],
+        ],
+      ],
+      'menu' => [
+        'link' => [
+          'entity_id' => ['#value' => $child->id()],
+        ],
+      ],
+    ];
+    $form = _menu_autopilot_node_form_after_build($form, new FormState());
+    $this->assertArrayNotHasKey('menu_autopilot_owned', $form);
+    $this->assertTrue(($form['menu']['#access'] ?? TRUE) !== FALSE);
+  }
+
+  /**
+   * Deleting a dynamic parent deletes generated children only.
+   *
+   * Core reparents children in MenuLinkContent::preDelete before this
+   * module's delete hook. The managed child is flagged on that reparent
+   * and removed when the parent is deleted; the hand-created sibling is
+   * left where core put it.
+   *
+   * @covers ::flagManagedIfParentMoving
+   * @covers ::flushPendingManagedDeletes
+   */
+  public function testDeletingDynamicParentDeletesManagedChildrenOnly(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $unrelated = Node::create([
+      'type' => 'solution',
+      'title' => 'Curated extra',
+      'status' => 1,
+    ]);
+    $unrelated->save();
+    $extra = MenuLinkContent::create([
+      'title' => 'Curated extra',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unrelated->id()],
+    ]);
+    $extra->save();
+
+    $children = $this->childrenOf($parent);
+    $this->assertCount(2, $children);
+    $managed_id = NULL;
+    foreach ($children as $child) {
+      if ($this->isManagedLink($child)) {
+        $managed_id = (int) $child->id();
+      }
+    }
+    $this->assertNotNull($managed_id);
+
+    $parent->delete();
+
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $storage->resetCache();
+    $this->assertNull($storage->load($managed_id), 'Generated children are removed with the parent.');
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $storage->load($extra->id()), 'Hand-created siblings stay.');
+  }
+
+  /**
+   * Reparenting a managed child does not delete it.
+   *
+   * The flagManagedIfParentMoving() helper is only a proxy for core's
+   * delete-time reparent. An editor or API parent change must keep the
+   * link.
+   *
+   * @covers ::flagManagedIfParentMoving
+   * @covers ::flushPendingManagedDeletes
+   */
+  public function testReparentingManagedChildDoesNotDeleteIt(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertTrue($this->isManagedLink($child));
+    $child_id = (int) $child->id();
+
+    $elsewhere = MenuLinkContent::create([
+      'title' => 'Elsewhere',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $elsewhere->save();
+
+    $child->set('parent', 'menu_link_content:' . $elsewhere->uuid());
+    $child->save();
+
+    $moved = $this->reloadLink($child_id);
+    $this->assertSame('menu_link_content:' . $elsewhere->uuid(), $moved->getParentId());
+    $this->assertTrue($this->isManagedLink($moved), 'An editor move does not delete the generated child.');
+  }
+
+  /**
+   * The marker backfill does not save parents (which would reconcile).
+   */
+  public function testUpdate10201DoesNotReconcileParents(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+
+    $stale_node = Node::create([
+      'type' => 'solution',
+      'title' => 'Stale',
+      'status' => 0,
+    ]);
+    $stale_node->save();
+    $stale = MenuLinkContent::create([
+      'title' => 'Stale',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $stale_node->id()],
+      'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $stale_node->id()],
+    ]);
+    $stale->save();
+    $this->assertCount(2, $this->childrenOf($parent));
+
+    $this->container->get('module_handler')->loadInclude('menu_autopilot', 'install');
+    menu_autopilot_update_10201();
+
+    $this->assertCount(2, $this->childrenOf($parent), 'A marker backfill must not sync dynamic parents.');
+    $this->assertTrue((bool) $this->reloadLink((int) $parent->id())->get('menu_autopilot_dynamic')->value);
+  }
+
+  /**
+   * The dynamic-parent marker is queryable and skips managed children.
+   */
+  public function testDynamicParentMarkerIsQueryable(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+    $this->assertFalse((bool) $child->get('menu_autopilot_dynamic')->value);
+
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $ids = $storage->getQuery()
+      ->condition('menu_name', 'main')
+      ->condition('menu_autopilot_dynamic', TRUE)
+      ->accessCheck(FALSE)
+      ->execute();
+    $this->assertSame(
+      [(int) $parent->id()],
+      array_values(array_map('intval', $ids)),
+    );
+  }
+
+  /**
    * Editorial node link URIs are rewritten to canonical entity references.
    *
    * @covers ::normalizeNodeUris

@@ -11,10 +11,11 @@
  * canonical `entity:node/<nid>` URIs, so every menu consumer — GraphQL,
  * JSON:API, a Twig theme — sees a single, coherent tree with no special work.
  *
- * The per-link configuration and the managed-child bookkeeping are stored in a
- * single internal `menu_autopilot` map base field on menu_link_content (see
- * menu_autopilot.install); the heavy lifting lives in NavSourceResolver and
- * NavSyncManager.
+ * The per-link configuration and the managed-child bookkeeping are stored in an
+ * internal `menu_autopilot` map base field on menu_link_content (see
+ * menu_autopilot.install). A boolean `menu_autopilot_dynamic` marker indexes
+ * parents with a non-none source so discovery does not hydrate every link.
+ * The heavy lifting lives in NavSourceResolver and NavSyncManager.
  */
 
 use Drupal\Core\Field\BaseFieldDefinition;
@@ -51,17 +52,22 @@ function menu_autopilot_help(string $route_name, RouteMatchInterface $route_matc
 /**
  * Implements hook_entity_base_field_info().
  *
- * Adds the internal `menu_autopilot` map field to every menu_link_content
- * entity. On a dynamic parent it holds the source descriptor; on a generated
- * child it holds `['managed' => TRUE, 'node' => <nid>]` so the sync manager can
- * recognise the links it owns. menu_link_content is a content entity and does
- * not support third-party settings, so a base field is the correct home for
- * this data; it is installed by menu_autopilot_install() via the entity
- * definition update manager.
+ * Adds the internal Autopilot fields to every menu_link_content entity.
+ *
+ * The `menu_autopilot` map holds the source descriptor on a dynamic parent
+ * and `['managed' => TRUE, 'node' => <nid>]` on a generated child.
+ * `menu_autopilot_dynamic` is a queryable boolean for parents whose source
+ * is not `none`. menu_link_content is a content entity and does not support
+ * third-party settings, so base fields are the correct home; they are
+ * installed by menu_autopilot_install() via the entity definition update
+ * manager.
  */
 function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type): array {
   if ($entity_type->id() === 'menu_link_content') {
-    return ['menu_autopilot' => _menu_autopilot_base_field()];
+    return [
+      'menu_autopilot' => _menu_autopilot_base_field(),
+      'menu_autopilot_dynamic' => _menu_autopilot_dynamic_field(),
+    ];
   }
   return [];
 }
@@ -86,6 +92,41 @@ function _menu_autopilot_base_field() {
 }
 
 /**
+ * Builds the shared definition of the dynamic-parent marker field.
+ *
+ * Queryable boolean kept in sync with the map by hook_entity_presave().
+ *
+ * @return \Drupal\Core\Field\BaseFieldDefinition
+ *   The field definition.
+ */
+function _menu_autopilot_dynamic_field() {
+  return BaseFieldDefinition::create('boolean')
+    ->setLabel(t('Menu Autopilot dynamic parent'))
+    ->setDescription(t('Queryable flag for parents with a non-none Autopilot source. The map field remains the descriptor.'))
+    ->setDefaultValue(FALSE)
+    ->setInternal(TRUE)
+    ->setDisplayConfigurable('form', FALSE)
+    ->setDisplayConfigurable('view', FALSE);
+}
+
+/**
+ * Implements hook_entity_presave().
+ */
+function menu_autopilot_entity_presave(EntityInterface $entity): void {
+  if (!$entity instanceof MenuLinkContentInterface) {
+    return;
+  }
+  if ($entity->hasField('menu_autopilot_dynamic')) {
+    $data = _menu_autopilot_link_data($entity);
+    $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
+    $entity->set('menu_autopilot_dynamic', $dynamic);
+  }
+  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+  $sync = \Drupal::service('menu_autopilot.sync_manager');
+  $sync->flagManagedIfParentMoving($entity);
+}
+
+/**
  * Implements hook_entity_insert().
  */
 function menu_autopilot_entity_insert(EntityInterface $entity): void {
@@ -100,11 +141,25 @@ function menu_autopilot_entity_update(EntityInterface $entity): void {
 }
 
 /**
+ * Implements hook_entity_predelete().
+ *
+ * Runs while the parent is still queryable. hook_entity_delete is too late:
+ * children are looked up by the parent's uuid and menu name.
+ */
+function menu_autopilot_entity_predelete(EntityInterface $entity): void {
+  if ($entity instanceof MenuLinkContentInterface) {
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = \Drupal::service('menu_autopilot.sync_manager');
+    $sync->onParentDeleted($entity);
+  }
+}
+
+/**
  * Implements hook_entity_delete().
  */
 function menu_autopilot_entity_delete(EntityInterface $entity): void {
   // A deleted node is already gone from storage, so re-syncing any parent that
-  // owned a link for it drops that link. Parent-link deletions need no action.
+  // owned a link for it drops that link.
   if ($entity instanceof NodeInterface) {
     _menu_autopilot_react($entity);
   }
@@ -138,6 +193,7 @@ function _menu_autopilot_react(EntityInterface $entity): void {
     $sync->syncNode($entity);
   }
   elseif ($entity instanceof MenuLinkContentInterface) {
+    $sync->releaseOwnedChildrenIfSourceCleared($entity);
     $sync->syncParentIfDynamic($entity);
   }
 }
@@ -537,8 +593,8 @@ function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkConte
   $type = $values['source_type'] ?? 'none';
 
   if ($type === 'none') {
-    // Clear any prior descriptor; leaves managed children untouched (they are
-    // not editable through this form).
+    // Clear the descriptor. Save releases managed children (clears the owned
+    // flag, keeps the links) so they are not stranded without a parent.
     $link->set('menu_autopilot', NULL);
     return;
   }
