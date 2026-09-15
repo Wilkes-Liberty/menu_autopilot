@@ -6,6 +6,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.4] — 2026-09-15
+
+### Changed
+- Maintainer author homepage now points at the drupal.org profile.
+
 ## [1.2.3] — 2026-08-19
 
 ### Fixed
