@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-09-15
+
 ### Changed
 - **Parent sync loads each parent’s children once** and partitions them
   in memory (owned / adoptable / extras) instead of re-querying on every
@@ -14,6 +16,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`menu_autopilot_dynamic`) instead of hydrating every link in a managed
   menu and PHP-filtering the serialized map. The map field remains the
   source descriptor.
+- Maintainer author homepage now points at the drupal.org profile.
 
 ### Fixed
 - **Turning a parent back to “Nothing (curated by hand)” no longer
