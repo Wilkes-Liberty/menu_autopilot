@@ -71,7 +71,8 @@ function menu_autopilot_update_10201(): void {
   $id_key = $mapping->requiresDedicatedTableStorage($field_storage) ? 'entity_id' : 'id';
   $tables = [$table];
   $revision_data = $mapping->getRevisionDataTable();
-  if (is_string($revision_data) && $revision_data !== '' && $table === $mapping->getDataTable()) {
+  // Shared-table fields only get a revision-data column when revisionable.
+  if ($field_storage->isRevisionable() && is_string($revision_data) && $revision_data !== '' && $table === $mapping->getDataTable()) {
     $tables[] = $revision_data;
   }
 
