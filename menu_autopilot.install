@@ -5,6 +5,9 @@
  * Install, update, and uninstall functions for Menu Autopilot.
  */
 
+use Drupal\Core\Entity\Sql\DefaultTableMapping;
+use Drupal\menu_link_content\MenuLinkContentInterface;
+
 /**
  * Implements hook_install().
  *
@@ -41,28 +44,53 @@ function menu_autopilot_uninstall(bool $is_syncing): void {
 /**
  * Add the queryable dynamic-parent marker and backfill existing parents.
  *
- * Writes the marker via storage restore() so this does not run entity
- * save hooks or reconcile menus.
+ * Writes the marker through the field tables so this does not run entity
+ * save hooks or reconcile menus. restore() inserts a new base row and
+ * collides with the existing id.
  */
 function menu_autopilot_update_10201(): void {
   _menu_autopilot_install_fields();
 
+  /** @var \Drupal\Core\Entity\Sql\SqlContentEntityStorage $storage */
   $storage = \Drupal::entityTypeManager()->getStorage('menu_link_content');
-  if (!$storage instanceof \Drupal\Core\Entity\ContentEntityStorageInterface) {
+  $mapping = $storage->getTableMapping();
+  if (!$mapping instanceof DefaultTableMapping) {
     return;
   }
   $ids = $storage->getQuery()->accessCheck(FALSE)->execute();
   if ($ids === []) {
     return;
   }
+  $definitions = \Drupal::service('entity_field.manager')->getFieldStorageDefinitions('menu_link_content');
+  if (!isset($definitions['menu_autopilot_dynamic'])) {
+    return;
+  }
+  $field_storage = $definitions['menu_autopilot_dynamic'];
+  $table = $mapping->getFieldTableName('menu_autopilot_dynamic');
+  $column = $mapping->getFieldColumnName($field_storage, 'value');
+  $id_key = $mapping->requiresDedicatedTableStorage($field_storage) ? 'entity_id' : 'id';
+  $tables = [$table];
+  $revision_data = $mapping->getRevisionDataTable();
+  if (is_string($revision_data) && $revision_data !== '' && $table === $mapping->getDataTable()) {
+    $tables[] = $revision_data;
+  }
+
+  $connection = \Drupal::database();
   foreach ($storage->loadMultiple($ids) as $link) {
+    if (!$link instanceof MenuLinkContentInterface) {
+      continue;
+    }
     $data = _menu_autopilot_link_data($link);
     $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
     if (!$dynamic) {
       continue;
     }
-    $link->set('menu_autopilot_dynamic', TRUE);
-    $storage->restore($link);
+    foreach ($tables as $table_name) {
+      $connection->update($table_name)
+        ->fields([$column => 1])
+        ->condition($id_key, $link->id())
+        ->execute();
+    }
   }
 }
 

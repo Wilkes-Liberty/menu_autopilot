@@ -958,8 +958,9 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * Reparenting a managed child does not delete it.
    *
-   * flagManagedIfParentMoving() is only a proxy for core's delete-time
-   * reparent. An editor or API parent change must keep the link.
+   * The flagManagedIfParentMoving() helper is only a proxy for core's
+   * delete-time reparent. An editor or API parent change must keep the
+   * link.
    *
    * @covers ::flagManagedIfParentMoving
    * @covers ::flushPendingManagedDeletes
