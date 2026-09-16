@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-09-16
+
 ### Fixed
 - **Taxonomy is now actually optional.** The parent-link form no longer
   builds a taxonomy-term autocomplete or offers the term source unless
