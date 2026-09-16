@@ -6,6 +6,7 @@ namespace Drupal\menu_autopilot;
 
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Entity\Query\QueryInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 
 /**
  * Resolves an "automatic children" source descriptor to published node IDs.
@@ -36,6 +37,7 @@ final class NavSourceResolver {
 
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
+    private readonly ModuleHandlerInterface $moduleHandler,
   ) {}
 
   /**
@@ -79,7 +81,7 @@ final class NavSourceResolver {
   private function resolveQuery(array $source): array {
     // Term sources need the Taxonomy entity type; bundle/manual do not.
     if (($source['type'] ?? '') === 'term'
-      && !\Drupal::moduleHandler()->moduleExists('taxonomy')
+      && !$this->moduleHandler->moduleExists('taxonomy')
     ) {
       return [];
     }
