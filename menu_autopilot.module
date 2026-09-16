@@ -391,25 +391,38 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     $description = t('Menu Autopilot generates this link’s children from published content and keeps them in sync. Only menus enabled on the <a href=":settings">settings page</a> are synced.', [':settings' => $settings_url]);
   }
 
+  // Taxonomy is optional (see info.yml). Same pattern as Token: omit the
+  // term source and its widgets when the module is not installed so the
+  // form does not target taxonomy_term or load that storage.
+  $has_taxonomy = \Drupal::moduleHandler()->moduleExists('taxonomy');
+  $source_type = $source['type'] ?? 'none';
+  if ($source_type === 'term' && !$has_taxonomy) {
+    $source_type = 'none';
+  }
+
   $form['menu_autopilot'] = [
     '#type' => 'details',
     '#title' => _menu_autopilot_parent_settings_title($link),
     '#description' => $description,
-    '#open' => ($source['type'] ?? 'none') !== 'none',
+    '#open' => $source_type !== 'none',
     '#tree' => TRUE,
     '#weight' => 5,
   ];
 
+  $source_options = [
+    'none' => t('Nothing (curated by hand)'),
+  ];
+  if ($has_taxonomy) {
+    $source_options['term'] = t('Nodes tagged with a taxonomy term');
+  }
+  $source_options['bundle'] = t('All nodes of a content type');
+  $source_options['manual'] = t('A hand-picked list of nodes');
+
   $form['menu_autopilot']['source_type'] = [
     '#type' => 'select',
     '#title' => t('Children come from'),
-    '#options' => [
-      'none' => t('Nothing (curated by hand)'),
-      'term' => t('Nodes tagged with a taxonomy term'),
-      'bundle' => t('All nodes of a content type'),
-      'manual' => t('A hand-picked list of nodes'),
-    ],
-    '#default_value' => $source['type'] ?? 'none',
+    '#options' => $source_options,
+    '#default_value' => $source_type,
   ];
 
   $existing_selector = ':input[name="menu_autopilot[existing_children]"]';
@@ -459,28 +472,30 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
 
-  $reference_fields = _menu_autopilot_reference_field_options();
-  $form['menu_autopilot']['reference_field'] = [
-    '#type' => 'select',
-    '#title' => t('Term reference field'),
-    '#description' => $reference_fields
-      ? t('The node field that references the term. Only fields that reference taxonomy terms are listed.')
-      : t('No taxonomy reference fields exist on your content types yet. Add an entity reference field that targets taxonomy terms to use this source.'),
-    '#options' => ['' => t('- Select a field -')] + $reference_fields,
-    '#default_value' => $source['reference_field'] ?? '',
-    '#states' => ['visible' => $visible_if(['term'])],
-  ];
+  if ($has_taxonomy) {
+    $reference_fields = _menu_autopilot_reference_field_options();
+    $form['menu_autopilot']['reference_field'] = [
+      '#type' => 'select',
+      '#title' => t('Term reference field'),
+      '#description' => $reference_fields
+        ? t('The node field that references the term. Only fields that reference taxonomy terms are listed.')
+        : t('No taxonomy reference fields exist on your content types yet. Add an entity reference field that targets taxonomy terms to use this source.'),
+      '#options' => ['' => t('- Select a field -')] + $reference_fields,
+      '#default_value' => $source['reference_field'] ?? '',
+      '#states' => ['visible' => $visible_if(['term'])],
+    ];
 
-  $form['menu_autopilot']['term'] = [
-    '#type' => 'entity_autocomplete',
-    '#target_type' => 'taxonomy_term',
-    '#title' => t('Taxonomy term'),
-    '#description' => t('Children are the published nodes whose reference field points at this term.'),
-    '#default_value' => !empty($source['term'])
-      ? \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($source['term'])
-      : NULL,
-    '#states' => ['visible' => $visible_if(['term'])],
-  ];
+    $form['menu_autopilot']['term'] = [
+      '#type' => 'entity_autocomplete',
+      '#target_type' => 'taxonomy_term',
+      '#title' => t('Taxonomy term'),
+      '#description' => t('Children are the published nodes whose reference field points at this term.'),
+      '#default_value' => !empty($source['term'])
+        ? \Drupal::entityTypeManager()->getStorage('taxonomy_term')->load($source['term'])
+        : NULL,
+      '#states' => ['visible' => $visible_if(['term'])],
+    ];
+  }
 
   $form['menu_autopilot']['bundle'] = [
     '#type' => 'select',
@@ -550,6 +565,9 @@ function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $fo
   $values = $form_state->getValue('menu_autopilot') ?: [];
   switch ($values['source_type'] ?? 'none') {
     case 'term':
+      if (!\Drupal::moduleHandler()->moduleExists('taxonomy')) {
+        break;
+      }
       if (empty($values['reference_field'])) {
         $form_state->setError($form['menu_autopilot']['reference_field'], t('Select the node field that references the term.'));
       }
@@ -591,6 +609,9 @@ function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $fo
 function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state): void {
   $values = $form_state->getValue('menu_autopilot') ?: [];
   $type = $values['source_type'] ?? 'none';
+  if ($type === 'term' && !\Drupal::moduleHandler()->moduleExists('taxonomy')) {
+    $type = 'none';
+  }
 
   if ($type === 'none') {
     // Clear the descriptor. Save releases managed children (clears the owned
