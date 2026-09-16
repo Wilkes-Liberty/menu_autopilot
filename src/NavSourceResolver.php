@@ -77,6 +77,13 @@ final class NavSourceResolver {
    * Resolve a term- or bundle-based source.
    */
   private function resolveQuery(array $source): array {
+    // Term sources need the Taxonomy entity type; bundle/manual do not.
+    if (($source['type'] ?? '') === 'term'
+      && !\Drupal::moduleHandler()->moduleExists('taxonomy')
+    ) {
+      return [];
+    }
+
     $query = $this->baseQuery();
 
     if (($source['type'] ?? '') === 'term') {
