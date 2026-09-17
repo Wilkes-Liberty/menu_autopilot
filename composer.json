@@ -1,6 +1,6 @@
 {
     "name": "drupal/menu_autopilot",
-    "description": "Automatic, content-driven navigation for Drupal — curate your top-level menu and let each item's children build and maintain themselves from published content. Headless-ready (clean canonical URLs, multilingual, cache-tag revalidation) and works with traditional themes.",
+    "description": "Automatic, content-driven navigation for Drupal — curate your top-level menu and let each item's children build and maintain themselves from published content. Headless-ready (clean canonical URLs, multilingual) and works with traditional themes.",
     "type": "drupal-module",
     "license": "GPL-2.0-or-later",
     "homepage": "https://www.drupal.org/project/menu_autopilot",

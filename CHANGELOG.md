@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Package and README copy no longer claim a shipped menubar or cache-tag
+  fan-out to a frontend. Those are not module behaviour.
+
 ## [1.3.1] — 2026-09-16
 
 ### Fixed
