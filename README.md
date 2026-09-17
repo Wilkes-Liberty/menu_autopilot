@@ -38,9 +38,7 @@ that gap.
 - **Multilingual.** Synced links are translatable and language-aware.
 - **Decoupled-ready.** It produces real `menu_link_content` links, so the composed tree is
   exposed by *any* menu consumer — GraphQL (GraphQL Compose), JSON:API, or a traditional theme
-  — with no extra work, and it fans cache-tag revalidation to your decoupled frontend(s).
-- **Accessible by design.** Ships with the recommended fully keyboard-navigable, WCAG 2.1 AA
-  menubar pattern for the consuming frontend.
+  — with no extra work.
 
 ## How it works
 
@@ -73,8 +71,9 @@ no schema to teach your GraphQL/JSON:API layer.
 
 ## Accessibility & internationalization
 
-Accessibility and multilingual support are first-class goals, not afterthoughts — see `docs/`
-for the recommended accessible menubar pattern and the translation workflow.
+See `docs/accessibility.md` for the recommended frontend pattern (disclosure
+navigation, not a menubar) and `docs/internationalization.md` for language
+invariants. The module ships menu data, not frontend markup.
 
 ## Source & releases
 
