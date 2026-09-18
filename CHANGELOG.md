@@ -6,15 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-09-18
+
+### Changed
+- Package and README copy no longer claim a shipped menubar or cache-tag
+  fan-out to a frontend. Those are not module behaviour.
+
 ### Fixed
 - **Leftover term sources no longer wipe managed children when Taxonomy
   is absent.** Reconcile and parent sync skip `type=term` parents instead
   of treating an empty resolve as “delete every owned child.” The stored
   descriptor is left unchanged until the parent form is saved.
-
-### Changed
-- Package and README copy no longer claim a shipped menubar or cache-tag
-  fan-out to a frontend. Those are not module behaviour.
 
 ## [1.3.1] — 2026-09-16
 
