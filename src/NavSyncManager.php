@@ -8,6 +8,7 @@ use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DestructableInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Utility\Token;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -51,6 +52,7 @@ final class NavSyncManager implements DestructableInterface {
     private readonly ConfigFactoryInterface $configFactory,
     private readonly NavSourceResolver $resolver,
     private readonly Token $token,
+    private readonly ModuleHandlerInterface $moduleHandler,
   ) {}
 
   /**
@@ -117,9 +119,14 @@ final class NavSyncManager implements DestructableInterface {
    * Ignores links the manager owns, so it never reacts to its own writes.
    */
   public function syncParentIfDynamic(MenuLinkContentInterface $link): void {
-    if (!$this->isManaged($link) && ($this->getSource($link)['type'] ?? 'none') !== 'none') {
-      $this->syncParent($link);
+    if ($this->isManaged($link)) {
+      return;
     }
+    $source = $this->getSource($link);
+    if (($source['type'] ?? 'none') === 'none' || $this->isUnavailableTermSource($source)) {
+      return;
+    }
+    $this->syncParent($link);
   }
 
   /**
@@ -249,6 +256,9 @@ final class NavSyncManager implements DestructableInterface {
       return;
     }
     $source = $this->getSource($parent);
+    if ($this->isUnavailableTermSource($source)) {
+      return;
+    }
     $desired = $this->resolver->resolve($source);
     $existing = $partition['owned'];
     $nodes = $desired ? $this->entityTypeManager->getStorage('node')->loadMultiple($desired) : [];
@@ -453,7 +463,11 @@ final class NavSyncManager implements DestructableInterface {
       if (!$link instanceof MenuLinkContentInterface) {
         continue;
       }
-      if (!$this->isManaged($link) && ($this->getSource($link)['type'] ?? 'none') !== 'none') {
+      $source = $this->getSource($link);
+      if ($this->isUnavailableTermSource($source)) {
+        continue;
+      }
+      if (!$this->isManaged($link) && ($source['type'] ?? 'none') !== 'none') {
         $parents[] = $link;
       }
     }
@@ -791,6 +805,18 @@ final class NavSyncManager implements DestructableInterface {
     return in_array($policy, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
       ? $policy
       : 'adopt';
+  }
+
+  /**
+   * TRUE when a leftover term source cannot run because Taxonomy is gone.
+   *
+   * Empty resolve() is the same signal as an empty published set, so these
+   * parents must not enter the reconcile delete path. The stored descriptor
+   * is left unchanged; the parent form converts leftover→none on save.
+   */
+  private function isUnavailableTermSource(array $source): bool {
+    return ($source['type'] ?? '') === 'term'
+      && !$this->moduleHandler->moduleExists('taxonomy');
   }
 
   /**
