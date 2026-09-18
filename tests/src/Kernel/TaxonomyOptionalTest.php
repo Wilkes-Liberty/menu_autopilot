@@ -71,6 +71,66 @@ final class TaxonomyOptionalTest extends KernelTestBase {
   }
 
   /**
+   * Reconcile must not delete managed children of a leftover term parent.
+   *
+   * When Taxonomy is absent, resolve() returns [] for type=term. That empty
+   * list is the same signal as “every published member is gone”, so leftover
+   * term parents must be skipped before the reconcile delete path. The stored
+   * descriptor stays type=term; the form converts leftover→none on save.
+   */
+  public function testLeftoverTermReconcileDoesNotWipeManagedChild(): void {
+    $node = Node::create([
+      'type' => 'page',
+      'title' => 'Kept child',
+      'status' => 1,
+    ]);
+    $node->save();
+
+    $parent = MenuLinkContent::create([
+      'title' => 'Leftover term parent',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+      'menu_autopilot' => [
+        'source' => [
+          'type' => 'term',
+          'term' => 1,
+          'reference_field' => 'field_gone',
+        ],
+      ],
+    ]);
+    $parent->save();
+
+    $child = MenuLinkContent::create([
+      'title' => 'Kept child',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $node->id()],
+      'menu_autopilot' => [
+        'managed' => TRUE,
+        'node' => (int) $node->id(),
+      ],
+    ]);
+    $child->save();
+    $child_id = (int) $child->id();
+
+    $this->container->get('menu_autopilot.sync_manager')->reconcile();
+
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $storage->resetCache([$child_id, (int) $parent->id()]);
+    $kept = $storage->load($child_id);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $kept);
+    $this->assertSame('Kept child', $kept->getTitle());
+    $data = $kept->get('menu_autopilot')->first()->getValue();
+    $this->assertNotEmpty($data['managed']);
+    $this->assertSame((int) $node->id(), (int) ($data['node'] ?? 0));
+
+    $reloaded = $storage->load((int) $parent->id());
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $reloaded);
+    $source = $reloaded->get('menu_autopilot')->first()->getValue()['source'] ?? [];
+    $this->assertSame('term', $source['type'] ?? NULL);
+  }
+
+  /**
    * A leftover term descriptor does not load taxonomy_term storage.
    */
   public function testLeftoverTermDescriptorDoesNotFatal(): void {
