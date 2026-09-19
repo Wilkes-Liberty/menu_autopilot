@@ -62,6 +62,30 @@ no schema to teach your GraphQL/JSON:API layer.
 3. Publish content — it appears under that item. Run `drush menu-autopilot:rebuild` any time to
    reconcile everything from scratch.
 
+## Disabled automatic children
+
+A sync creates its children enabled. `enabled` is the published key of
+`menu_link_content`, so a module that governs publishing can force a link to
+disabled during the save when the acting account may not publish. An API client
+that updates a node is the usual case.
+
+When one of the sync's own saves asks for an enabled child and storage holds a
+disabled one, the module:
+
+- logs a warning on the `menu_autopilot` channel that names the parent link, the
+  node id and the acting account's uid;
+- records `disabled_by_save` in the link's internal `menu_autopilot` map;
+- enables the link on the next sync run by an account whose save keeps it
+  enabled, and removes the flag. Each account tries once per request.
+
+A link with no flag was disabled by an editor. A sync updates its title, weight
+and URI and never enables it. Saving the link form with **Enabled** unchecked
+removes the flag, so the link then stays disabled.
+
+`drush menu-autopilot:rebuild` lists every automatic child that is still
+disabled after the rebuild, with the reason. The parent link's **Menu
+Autopilot** section shows the same list.
+
 ## Requirements
 
 - Drupal 10.6+ / 11.3+

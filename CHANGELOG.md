@@ -6,6 +6,43 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **An automatic child that another module disables during the sync's own
+  save is now reported, flagged and enabled later.** `enabled` is the
+  published key of `menu_link_content`, so a module that governs publishing
+  can force a link to disabled in presave when the acting account may not
+  publish. The sync asked for an enabled link, got a disabled one and said
+  nothing, and later syncs left it disabled. The sync now reloads the link
+  after each of its saves. If the link was meant to be enabled and is not, it
+  logs a warning that names the parent, the node and the acting account, and
+  records `disabled_by_save` in the link's `menu_autopilot` map. The next sync
+  run by an account whose save keeps the link enabled enables it and removes
+  the flag. Each account tries once per request. This covers a new child, an
+  adopted link, and an enabled child that a rename or re-weight saved
+  disabled.
+  ([#3624442](https://www.drupal.org/project/menu_autopilot/issues/3624442))
+- **A sync never enables a link an editor disabled.** Only links carrying the
+  flag are touched. The flag is dropped when an editor saves the link form
+  with *Enabled* unchecked, and on the first save after someone else enabled
+  the link.
+
+### Added
+- `drush menu-autopilot:rebuild` lists automatic children that are still
+  disabled after the rebuild, with the reason. The parent link's *Menu
+  Autopilot* section lists them too, and the child's own form says when a
+  save, not an editor, disabled it.
+- `NavSyncManager::disabledManagedChildren()` returns the same rows for other
+  code.
+
+### Changed
+- No schema change: the flag is a key in the existing map field. An empty
+  post-update rebuilds the container because the sync manager takes two new
+  service arguments (`current_user` and a `menu_autopilot` logger channel).
+  Run `drush updb`, or rebuild caches, after updating the code.
+- Children that an earlier release left disabled carry no flag, so they are
+  treated as editor-disabled and stay disabled. The rebuild command and the
+  parent form now list them. Enable them by hand.
+
 ## [1.3.2] — 2026-09-18
 
 ### Changed

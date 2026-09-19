@@ -43,6 +43,28 @@ final class MenuAutopilotCommands extends DrushCommands {
     $this->logger()->success(dt('Menu Autopilot: rebuilt automatic children for menus @menus.', [
       '@menus' => implode(', ', $this->syncManager->managedMenus()),
     ]));
+
+    // A disabled automatic child is a published node no menu shows. The
+    // rebuild has just tried to enable the ones it may enable, so whatever is
+    // listed here needs an operator.
+    $disabled = $this->syncManager->disabledManagedChildren();
+    foreach ($disabled as $row) {
+      $this->logger()->warning(dt('Disabled automatic child: "@title" (link @link, node @nid) under "@parent" (link @parent_id). @reason', [
+        '@title' => $row['title'],
+        '@link' => $row['link_id'],
+        '@nid' => $row['node'],
+        '@parent' => $row['parent_title'],
+        '@parent_id' => $row['parent_id'],
+        '@reason' => $row['disabled_by_save']
+          ? dt('Another module disabled it while Menu Autopilot was saving it, and this run could not enable it. Run the rebuild as an account that may enable menu links.')
+          : dt('It was disabled outside Menu Autopilot, so it stays disabled until an editor enables it.'),
+      ]));
+    }
+    if ($disabled !== []) {
+      $this->logger()->warning(dt('Menu Autopilot: @count automatic child link(s) are disabled and do not show in the menu.', [
+        '@count' => count($disabled),
+      ]));
+    }
   }
 
   /**
