@@ -18,12 +18,17 @@
  * The heavy lifting lives in NavSourceResolver and NavSyncManager.
  */
 
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Field\BaseFieldDefinition;
 use Drupal\Core\Entity\EntityFormInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Field\FieldDefinitionInterface;
+use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Session\AccountInterface;
 use Drupal\Core\Url;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\NodeInterface;
@@ -70,6 +75,36 @@ function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type)
     ];
   }
   return [];
+}
+
+/**
+ * Implements hook_entity_field_access().
+ *
+ * The two Autopilot fields on menu links are written only by this module: the
+ * menu link form's entity builder, the sync manager and the Drush and MCP
+ * commands that call it. Those set the values in code, which field access does
+ * not govern. Everything that does consult field access is an outside writer
+ * or reader (JSON:API, core REST, a form widget, a formatter), and none of
+ * them has a reason to touch these fields.
+ *
+ * The internal flag on the definitions only keeps the fields out of
+ * normalized output. It does not stop a write: JSON:API and REST both accept
+ * an internal field in a PATCH from any account that may update the link. A
+ * stored map can mark a link as a managed child, or as a dynamic parent whose
+ * next sync deletes its other children, without the checks the form applies.
+ *
+ * Every operation is forbidden, for every account, including one that
+ * bypasses entity access. Forbidden is final: no other module's neutral or
+ * allowed result can reopen it.
+ */
+function menu_autopilot_entity_field_access(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
+  if ($field_definition->getTargetEntityTypeId() !== 'menu_link_content') {
+    return AccessResult::neutral();
+  }
+  if (!in_array($field_definition->getName(), ['menu_autopilot', 'menu_autopilot_dynamic'], TRUE)) {
+    return AccessResult::neutral();
+  }
+  return AccessResult::forbidden('The Menu Autopilot fields are module-owned. They are written only by Menu Autopilot and are not readable or writable through field access.');
 }
 
 /**

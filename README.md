@@ -86,6 +86,28 @@ removes the flag, so the link then stays disabled.
 disabled after the rebuild, with the reason. The parent link's **Menu
 Autopilot** section shows the same list.
 
+## Module-owned fields
+
+Menu Autopilot stores its state in two base fields on menu links:
+`menu_autopilot`, a map, and `menu_autopilot_dynamic`, a boolean marker. Both
+are module-owned. No API can read or write them.
+
+- Field access forbids `view` and `edit` on both fields for every account,
+  including user 1.
+- JSON:API and core REST answer 403 to a `PATCH` or `POST` that names either
+  field. Without this rule they accept it from any account that may update
+  the link.
+- Neither field appears in a JSON:API, REST or GraphQL response. GraphQL
+  Compose checks `view` access on a field before it resolves it. It has no
+  mutation for menu links.
+- Neither field has a form widget or a formatter.
+
+The module writes the fields in code: the menu link form's Menu Autopilot
+section, the sync, the Drush commands and the MCP normalize tool. Field access
+does not apply to those writes. A custom module that sets the fields in code
+is not stopped either, so treat the map as private to Menu Autopilot. To ask
+what a link is, use the MCP tools below.
+
 ## Optional MCP tools
 
 The module's two base fields are internal, so JSON:API and GraphQL leave them
