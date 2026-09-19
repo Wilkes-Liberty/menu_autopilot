@@ -328,7 +328,7 @@ function menu_autopilot_form_menu_edit_form_alter(array &$form, FormStateInterfa
   if (!$menu instanceof Menu) {
     return;
   }
-  $managed = \Drupal::config('menu_autopilot.settings')->get('managed_menus') ?: ['main'];
+  $managed = \Drupal::service('menu_autopilot.sync_manager')->managedMenus();
   if (!in_array($menu->id(), $managed, TRUE)) {
     return;
   }
@@ -372,7 +372,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   }
   $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
   $settings = \Drupal::config('menu_autopilot.settings');
-  $managed_menus = $settings->get('managed_menus') ?: ['main'];
+  $managed_menus = \Drupal::service('menu_autopilot.sync_manager')->managedMenus();
   $settings_url = Url::fromRoute('menu_autopilot.settings_form')->toString();
 
   // Builds a #states 'visible' condition that shows an element when the source

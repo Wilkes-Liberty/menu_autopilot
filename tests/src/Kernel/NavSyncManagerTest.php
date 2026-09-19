@@ -1069,6 +1069,47 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * An explicit empty managed_menus list means no menus, not main.
+   *
+   * Only a missing value uses the install default. Saving [] (unchecking
+   * every menu) must not fall back to main, and reconcile must not create
+   * or touch children.
+   *
+   * @covers ::managedMenus
+   * @covers ::reconcile
+   */
+  public function testEmptyManagedMenusMeansNoMenus(): void {
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+    $this->assertSame(['main'], $sync->managedMenus(), 'A missing value uses the install default.');
+
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Governed AI', TRUE);
+    $children = $this->childrenOf($parent);
+    $this->assertCount(1, $children, 'A child exists while main is the default.');
+    $child = reset($children);
+    $child_id = (int) $child->id();
+    $changed = $child->getChangedTime();
+
+    $this->config('menu_autopilot.settings')->set('managed_menus', [])->save();
+    $this->assertSame([], $sync->managedMenus());
+
+    $sync->reconcile();
+
+    $after = $this->childrenOf($parent);
+    $this->assertSame([$child_id], array_map('intval', array_keys($after)));
+    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
+    $storage->resetCache([$child_id]);
+    $reloaded = $storage->load($child_id);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $reloaded);
+    $this->assertSame($changed, $reloaded->getChangedTime(), 'Reconcile does not touch existing children when no menus are managed.');
+
+    $this->createSolution('Later platform', TRUE);
+    $sync->reconcile();
+    $this->assertCount(1, $this->childrenOf($parent), 'Reconcile creates no children when no menus are managed.');
+  }
+
+  /**
    * The status report counts each kind of child and is bounded.
    *
    * @covers ::parentStatus

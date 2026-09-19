@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- **An empty managed-menus list now means no menus.** Saving `[]` (unchecking
+  every menu on the settings form) no longer falls back to `main`. Only a
+  missing value uses the install default. Reconcile creates and touches no
+  children when the list is empty.
 - **An automatic child that another module disables during the sync's own
   save is now reported, flagged and enabled later.** `enabled` is the
   published key of `menu_link_content`, so a module that governs publishing
