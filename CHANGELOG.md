@@ -11,6 +11,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   every menu on the settings form) no longer falls back to `main`. Only a
   missing value uses the install default. Reconcile creates and touches no
   children when the list is empty.
+
+## [1.4.0] - 2026-09-19
+
+### Fixed
+- **API clients can no longer write the two internal fields.** `menu_autopilot`
+  and `menu_autopilot_dynamic` are marked internal, which keeps them out of
+  API responses but does not stop a write. JSON:API and core REST both
+  accepted a `PATCH` naming `menu_autopilot` from any account that may update
+  the link, stored the map and returned 200 without showing it. A stored map
+  could mark a link as an automatic child, or as a dynamic parent whose next
+  sync deletes its other children, without the checks the form applies. The
+  module now implements `hook_entity_field_access()` and forbids `view` and
+  `edit` on both fields for every account. JSON:API and REST answer 403.
+  Forbidding `view` also stops a JSON:API collection filter on
+  `menu_autopilot_dynamic`, which listed the dynamic parents. The module's
+  own writes (the menu link form, the sync, the Drush commands and
+  the MCP normalize tool) set the fields in code and are not affected.
+  ([#3624463](https://www.drupal.org/project/menu_autopilot/issues/3624463))
 - **An automatic child that another module disables during the sync's own
   save is now reported, flagged and enabled later.** `enabled` is the
   published key of `menu_link_content`, so a module that governs publishing
