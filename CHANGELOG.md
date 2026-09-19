@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-19
+
 ### Fixed
 - **API clients can no longer write the two internal fields.** `menu_autopilot`
   and `menu_autopilot_dynamic` are marked internal, which keeps them out of
