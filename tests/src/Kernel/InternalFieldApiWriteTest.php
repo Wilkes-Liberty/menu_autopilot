@@ -214,6 +214,30 @@ final class InternalFieldApiWriteTest extends KernelTestBase {
   }
 
   /**
+   * A JSON:API collection cannot be filtered or sorted by the marker.
+   *
+   * A filter that works tells the client which links are dynamic parents,
+   * which is a read of the field by another route.
+   */
+  public function testJsonApiRefusesToFilterByTheMarker(): void {
+    $this->link->set('menu_autopilot', ['source' => ['type' => 'bundle', 'bundle' => 'page']])->save();
+
+    $response = $this->request('GET', '/jsonapi/menu_link_content/menu_link_content?filter[menu_autopilot_dynamic]=1', NULL, 'application/vnd.api+json');
+    $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
+    $this->assertStringNotContainsString('Plain link', (string) $response->getContent());
+
+    // A sort by the marker orders the dynamic parents first or last.
+    $response = $this->request('GET', '/jsonapi/menu_link_content/menu_link_content?sort=-menu_autopilot_dynamic', NULL, 'application/vnd.api+json');
+    $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
+    $this->assertStringNotContainsString('Plain link', (string) $response->getContent());
+
+    // The same collection filtered by an ordinary field still answers.
+    $response = $this->request('GET', '/jsonapi/menu_link_content/menu_link_content?filter[title]=Plain%20link', NULL, 'application/vnd.api+json');
+    $this->assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+    $this->assertStringContainsString('Plain link', (string) $response->getContent());
+  }
+
+  /**
    * A core REST PATCH of either field is refused and nothing is stored.
    */
   public function testRestRefusesBothFields(): void {

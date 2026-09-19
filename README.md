@@ -90,13 +90,16 @@ Autopilot** section shows the same list.
 
 Menu Autopilot stores its state in two base fields on menu links:
 `menu_autopilot`, a map, and `menu_autopilot_dynamic`, a boolean marker. Both
-are module-owned. No API can read or write them.
+are module-owned. They are not readable or writable over JSON:API, core REST
+or GraphQL, or over any other API that checks field access.
 
 - Field access forbids `view` and `edit` on both fields for every account,
   including user 1.
 - JSON:API and core REST answer 403 to a `PATCH` or `POST` that names either
   field. Without this rule they accept it from any account that may update
   the link.
+- A JSON:API collection cannot be filtered or sorted by either field. Without
+  the rule a filter on `menu_autopilot_dynamic` lists the dynamic parents.
 - Neither field appears in a JSON:API, REST or GraphQL response. GraphQL
   Compose checks `view` access on a field before it resolves it. It has no
   mutation for menu links.

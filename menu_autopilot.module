@@ -93,9 +93,10 @@ function menu_autopilot_entity_base_field_info(EntityTypeInterface $entity_type)
  * stored map can mark a link as a managed child, or as a dynamic parent whose
  * next sync deletes its other children, without the checks the form applies.
  *
- * Every operation is forbidden, for every account, including one that
- * bypasses entity access. Forbidden is final: no other module's neutral or
- * allowed result can reopen it.
+ * Every operation is forbidden, for every account, including user 1.
+ * Forbidden outranks another module's neutral or allowed result. Only a
+ * hook_entity_field_access_alter() implementation that removes this module's
+ * result could reopen the fields.
  */
 function menu_autopilot_entity_field_access(string $operation, FieldDefinitionInterface $field_definition, AccountInterface $account, ?FieldItemListInterface $items = NULL): AccessResultInterface {
   if ($field_definition->getTargetEntityTypeId() !== 'menu_link_content') {

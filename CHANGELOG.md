@@ -15,8 +15,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   could mark a link as an automatic child, or as a dynamic parent whose next
   sync deletes its other children, without the checks the form applies. The
   module now implements `hook_entity_field_access()` and forbids `view` and
-  `edit` on both fields for every account. JSON:API and REST answer 403. The
-  module's own writes (the menu link form, the sync, the Drush commands and
+  `edit` on both fields for every account. JSON:API and REST answer 403.
+  Forbidding `view` also stops a JSON:API collection filter on
+  `menu_autopilot_dynamic`, which listed the dynamic parents. The module's
+  own writes (the menu link form, the sync, the Drush commands and
   the MCP normalize tool) set the fields in code and are not affected.
   ([#3624463](https://www.drupal.org/project/menu_autopilot/issues/3624463))
 - **An automatic child that another module disables during the sync's own
