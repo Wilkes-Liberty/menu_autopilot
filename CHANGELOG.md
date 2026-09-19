@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **An empty managed-menus list now means no menus.** Saving `[]` (unchecking
+  every menu on the settings form) no longer falls back to `main`. Only a
+  missing value uses the install default. Reconcile creates and touches no
+  children when the list is empty.
+
 ## [1.4.0] - 2026-09-19
 
 ### Fixed

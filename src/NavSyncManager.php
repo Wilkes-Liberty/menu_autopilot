@@ -541,8 +541,12 @@ final class NavSyncManager implements DestructableInterface {
    *   Changed links keyed by id, valued "old-uri → new-uri".
    */
   public function normalizeNodeUris(?array $menu_names = NULL): array {
+    $menus = $menu_names ?? $this->managedMenus();
+    if ($menus === []) {
+      return [];
+    }
     $ids = $this->menuLinkStorage()->getQuery()
-      ->condition('menu_name', $menu_names ?: $this->managedMenus(), 'IN')
+      ->condition('menu_name', $menus, 'IN')
       ->accessCheck(FALSE)
       ->execute();
 
@@ -594,11 +598,14 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * The menus whose links may drive automatic children.
    *
+   * An explicit empty list means no menus. Only a missing value uses the
+   * install default (`main`).
+   *
    * @return string[]
    *   The configured menu machine names.
    */
   public function managedMenus(): array {
-    return $this->configFactory->get('menu_autopilot.settings')->get('managed_menus') ?: ['main'];
+    return $this->configFactory->get('menu_autopilot.settings')->get('managed_menus') ?? ['main'];
   }
 
   /**
@@ -613,8 +620,12 @@ final class NavSyncManager implements DestructableInterface {
    *   The parent links that have a source descriptor.
    */
   private function findDynamicParents(): array {
+    $menus = $this->managedMenus();
+    if ($menus === []) {
+      return [];
+    }
     $ids = $this->menuLinkStorage()->getQuery()
-      ->condition('menu_name', $this->managedMenus(), 'IN')
+      ->condition('menu_name', $menus, 'IN')
       ->condition('menu_autopilot_dynamic', TRUE)
       ->accessCheck(FALSE)
       ->execute();
