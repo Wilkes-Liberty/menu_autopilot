@@ -265,6 +265,80 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
+   * Every dynamic parent in the managed menus, with counts of its children.
+   *
+   * A read-only view over the same discovery and partition a sync uses, for
+   * status pages and tools. It does not resolve the source, so it says what
+   * is under each parent now, not what the next sync will do. It returns
+   * titles, ids and counts only: never the label pattern, and no node field.
+   *
+   * - `owned`: children this module manages.
+   * - `adoptable`: unmanaged children that point at a node, one per node. A
+   *   sync adopts, leaves or deletes them, depending on the parent's policy
+   *   and on whether the node is in the source.
+   * - `extra`: every other child.
+   * - `disabled`: owned children that are disabled.
+   * - `disabled_by_save`: the disabled ones a sync save, not an editor,
+   *   left disabled.
+   *
+   * @param int $max_parents
+   *   The most parents to describe. `parents_total` still counts them all.
+   * @param int $max_listed
+   *   The most disabled children to list under one parent.
+   *
+   * @return array{managed_menus: string[], parents_total: int, parents_truncated: bool, parents: list<array<string, mixed>>}
+   *   The report.
+   */
+  public function parentStatus(int $max_parents = 50, int $max_listed = 25): array {
+    $max_parents = max(1, $max_parents);
+    $max_listed = max(0, $max_listed);
+    $parents = $this->findDynamicParents();
+    $rows = [];
+    foreach (array_slice($parents, 0, $max_parents) as $parent) {
+      $siblings = $this->loadChildren($parent);
+      $partition = $this->partitionChildren($siblings);
+      $source = $this->getSource($parent);
+      $disabled = [];
+      $disabled_by_save = 0;
+      foreach ($partition['owned'] as $nid => $link) {
+        if ($link->isEnabled()) {
+          continue;
+        }
+        $by_save = !empty($this->getData($link)['disabled_by_save']);
+        $disabled_by_save += (int) $by_save;
+        $disabled[] = [
+          'title' => (string) $link->getTitle(),
+          'node' => (int) $nid,
+          'disabled_by_save' => $by_save,
+        ];
+      }
+      $rows[] = [
+        'uuid' => (string) $parent->uuid(),
+        'title' => (string) $parent->getTitle(),
+        'menu' => (string) $parent->getMenuName(),
+        'enabled' => $parent->isEnabled(),
+        'source_type' => (string) ($source['type'] ?? 'none'),
+        'existing_children' => $this->existingChildrenPolicy($source),
+        'counts' => [
+          'owned' => count($partition['owned']),
+          'adoptable' => count($partition['adoptable']),
+          'extra' => count($siblings) - count($partition['owned']) - count($partition['adoptable']),
+          'disabled' => count($disabled),
+          'disabled_by_save' => $disabled_by_save,
+        ],
+        'disabled_children' => array_slice($disabled, 0, $max_listed),
+        'disabled_children_truncated' => count($disabled) > $max_listed,
+      ];
+    }
+    return [
+      'managed_menus' => array_values($this->managedMenus()),
+      'parents_total' => count($parents),
+      'parents_truncated' => count($parents) > $max_parents,
+      'parents' => $rows,
+    ];
+  }
+
+  /**
    * Delete managed children flagged by flagManagedIfParentMoving().
    *
    * Only children that were moved off $parent are removed. A parent change

@@ -27,6 +27,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the link.
 
 ### Added
+- **Optional `menu_autopilot_mcp` submodule** with three Tool API plugins
+  governed by MCP Sentinel. The module's two base fields are internal, so an
+  API client could not tell an automatic child from a curated link before
+  editing it. The base module gains no dependency.
+  ([#3624448](https://www.drupal.org/project/menu_autopilot/issues/3624448))
+  - `menu_autopilot_status` (read): the dynamic parents in the managed menus
+    with counts of owned, adoptable, extra and disabled children, and the
+    disabled automatic children by title and node id. At most 50 parents and
+    25 listed children per parent.
+  - `menu_autopilot_link_info` (read): for one menu link UUID, whether it is
+    a dynamic parent, an automatic child (and of which node) or neither, and
+    what a client edit will do.
+  - `menu_autopilot_normalize_uris` (write): runs the existing URI
+    normalisation for named managed menus. It reads each change back from
+    storage and reports whether it reached the live link, and says when a
+    refused save stopped it part way. It needs its own permission on top of
+    the read permission.
+  - No tool returns a label pattern or a node field value.
+- `NavSyncManager::parentStatus()`, a bounded read-only report of the dynamic
+  parents and their children. It is the one new public method the tools
+  need.
 - `drush menu-autopilot:rebuild` lists automatic children that are still
   disabled after the rebuild, with the reason. The parent link's *Menu
   Autopilot* section lists them too, and the child's own form says when a

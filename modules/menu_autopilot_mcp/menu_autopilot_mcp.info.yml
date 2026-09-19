@@ -1,0 +1,11 @@
+name: 'Menu Autopilot MCP'
+type: module
+description: 'Optional Tool API plugins for Menu Autopilot status, menu link info and URI normalisation, governed by MCP Sentinel.'
+package: 'Menu'
+# The same range as Menu Autopilot. MCP Sentinel supports ^10.6 || ^11.3 and
+# Tool API supports ^10.5 || ^11, so neither narrows it.
+core_version_requirement: ^10.6 || ^11.3
+dependencies:
+  - menu_autopilot:menu_autopilot
+  - mcp_sentinel:mcp_sentinel (>=2.22.0)
+  - tool:tool (>=1.0.0-beta8)

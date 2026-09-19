@@ -86,6 +86,60 @@ removes the flag, so the link then stays disabled.
 disabled after the rebuild, with the reason. The parent link's **Menu
 Autopilot** section shows the same list.
 
+## Optional MCP tools
+
+The module's two base fields are internal, so JSON:API and GraphQL leave them
+out. An API client cannot tell an automatic child from a curated link, and an
+edit to an automatic child is overwritten by the next sync. The optional
+`menu_autopilot_mcp` submodule answers that before the client writes.
+
+It needs [Tool API](https://www.drupal.org/project/tool) 1.0.0-beta8 or later
+and [MCP Sentinel](https://www.drupal.org/project/mcp_sentinel) 2.22 or later.
+Menu Autopilot itself depends on neither. Every tool needs MCP Sentinel
+governance to be ready, the `access mcp sentinel context` permission and the
+restricted `use menu autopilot mcp tools` permission. Every refusal is one fixed
+message. Results are capped at 128 KiB, or the Sentinel profile's response cap
+when that is lower.
+
+| Tool | Kind | What it returns |
+| --- | --- | --- |
+| `menu_autopilot_status` | read | The managed menus. Each dynamic parent: title, UUID, menu, source type, existing-children policy, and counts of owned, adoptable, extra and disabled children. Disabled automatic children by title and node id, marked when a sync save, not an editor, disabled them. At most 50 parents and 25 listed children per parent; flags say when a list was cut. |
+| `menu_autopilot_link_info` | read | For one `menu_link_content` UUID: `dynamic_parent`, `managed_child` (with the node id) or `plain`; whether it sits under a dynamic parent and that parent's policy; and `effect_of_client_edit`, a plain sentence such as "Title, weight and URI are overwritten on the next sync of its parent." |
+| `menu_autopilot_normalize_uris` | write | Runs `menu-autopilot:normalize-uris` for one to ten named menus. Each name must be a managed menu. Returns each changed link id, its new `entity:node/<nid>` URI and `applied`. Lists at most 100 changes. Also needs the restricted `normalize menu link uris via mcp` permission. |
+
+`applied` is read back from storage after the save. MCP Sentinel's default
+profile denies publishing, and it turns a governed edit of a published menu link
+into an unpublished pending revision. The live link keeps its old URI, and the
+tool reports `applied: false` instead of a success that did not happen. To let
+the tool write live links, set `entity_rules.menu_link_content.allow_publish` on
+the Sentinel profile.
+
+The tool works through the named menus one at a time. If another module refuses
+a save with an exception, the tool stops and returns `completed: false` with
+`failed_menu`. Links saved before that stay changed and are listed. The call is
+safe to repeat.
+
+The status counts say what is under each parent now. `adoptable` means an
+unmanaged child that points at a node. The tool does not resolve the source, so
+it does not predict what the next sync will do with it.
+
+No tool returns the child label pattern or any node field value. A pattern can
+name any node field, and its output is already the public link title. The old
+URI of a normalised link is not returned either: it is whatever an editor typed
+and can carry a query string.
+
+These are deliberately not tools:
+
+- **Setting or clearing a source descriptor.** Its validation lives in the link
+  form. The `replace` policy deletes links. A label pattern can publish any
+  node field into a public menu.
+- **Changing the managed menus setting.** It decides which menus the module may
+  write to at all.
+- **Releasing managed flags.** It hands automatic children back to editors and
+  is done by saving the parent with no source.
+- **Rebuild or preview.** The sync has no plan-and-apply split, so a preview
+  could not predict the write. Use `drush menu-autopilot:rebuild`.
+
 ## Requirements
 
 - Drupal 10.6+ / 11.3+

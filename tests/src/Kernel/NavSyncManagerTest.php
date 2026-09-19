@@ -1069,6 +1069,73 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
+   * The status report counts each kind of child and is bounded.
+   *
+   * @covers ::parentStatus
+   */
+  public function testParentStatusCountsChildrenAndIsBounded(): void {
+    $parent = $this->createDynamicParent([
+      'existing_children' => 'add',
+      'title_pattern' => '[node:title] pattern-marker',
+    ]);
+    $this->createDynamicParent();
+    $owned = $this->createSolution('Atlas', TRUE);
+    $disabled = $this->createSolution('Beacon', TRUE);
+    $unpublished = $this->createSolution('Draft', FALSE);
+    foreach ($this->childrenOf($parent) as $link) {
+      if (str_starts_with($link->getTitle(), 'Beacon')) {
+        $link->set('enabled', FALSE)->save();
+      }
+    }
+    // Add-only leaves a hand-made node link unmanaged, so it stays adoptable.
+    MenuLinkContent::create([
+      'title' => 'Hand made',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $unpublished->id()],
+    ])->save();
+    MenuLinkContent::create([
+      'title' => 'Curated',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'route:<nolink>'],
+    ])->save();
+
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+    $report = $sync->parentStatus();
+
+    $this->assertSame(['main'], $report['managed_menus']);
+    $this->assertSame(2, $report['parents_total']);
+    $this->assertFalse($report['parents_truncated']);
+    $row = array_column($report['parents'], NULL, 'uuid')[$parent->uuid()];
+    $this->assertSame('Platforms', $row['title']);
+    $this->assertSame('term', $row['source_type']);
+    $this->assertSame('add', $row['existing_children']);
+    $this->assertSame(
+      ['owned' => 2, 'adoptable' => 1, 'extra' => 1, 'disabled' => 1, 'disabled_by_save' => 0],
+      $row['counts'],
+    );
+    $this->assertSame(
+      [['title' => 'Beacon pattern-marker', 'node' => (int) $disabled->id(), 'disabled_by_save' => FALSE]],
+      $row['disabled_children'],
+    );
+    $this->assertFalse($row['disabled_children_truncated']);
+    $this->assertNotSame((int) $owned->id(), $row['disabled_children'][0]['node']);
+
+    // The label pattern is never part of the report.
+    $json = json_encode($report);
+    $this->assertStringNotContainsString('title_pattern', $json);
+    $this->assertStringNotContainsString('[node:', $json);
+
+    $bounded = $sync->parentStatus(1, 0);
+    $this->assertSame(2, $bounded['parents_total']);
+    $this->assertTrue($bounded['parents_truncated']);
+    $this->assertCount(1, $bounded['parents']);
+    $this->assertSame([], $bounded['parents'][0]['disabled_children']);
+  }
+
+  /**
    * Turns a saved parent into a dynamic source and reconciles its children.
    */
   private function enableAutomaticChildren(MenuLinkContentInterface $parent, string $policy = 'adopt', bool $reparent = FALSE, array $overrides = []): void {

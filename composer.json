@@ -25,6 +25,8 @@
         "drupal/core": "^10.6 || ^11.3"
     },
     "suggest": {
-        "drupal/token": "Adds the token browser UI and extra tokens for the child link title pattern."
+        "drupal/token": "Adds the token browser UI and extra tokens for the child link title pattern.",
+        "drupal/mcp_sentinel": "Required only by the Menu Autopilot MCP submodule (menu_autopilot_mcp): ^2.22.",
+        "drupal/tool": "Required only by the Menu Autopilot MCP submodule (menu_autopilot_mcp): ^1.0.0-beta8."
     }
 }
