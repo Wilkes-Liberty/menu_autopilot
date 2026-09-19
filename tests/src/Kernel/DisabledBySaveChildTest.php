@@ -393,6 +393,48 @@ final class DisabledBySaveChildTest extends KernelTestBase implements LoggerInte
   }
 
   /**
+   * Adopting an enabled hand-made link is checked like any other sync save.
+   *
+   * @covers ::syncParent
+   */
+  public function testAdoptionThatDisablesAnEnabledLinkIsFlagged(): void {
+    $this->actAs($this->privileged);
+    $node = $this->createPage('Atlas');
+    $parent = MenuLinkContent::create([
+      'title' => 'Platforms',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $parent->save();
+    $hand_made = MenuLinkContent::create([
+      'title' => 'Atlas',
+      'menu_name' => 'main',
+      'parent' => 'menu_link_content:' . $parent->uuid(),
+      'link' => ['uri' => 'entity:node/' . $node->id()],
+    ]);
+    $hand_made->save();
+    $this->assertTrue($hand_made->isEnabled());
+
+    $this->actAs($this->restricted);
+    $parent->set('menu_autopilot', [
+      'source' => ['type' => 'bundle', 'bundle' => 'page', 'sort' => 'title_asc', 'limit' => 0],
+    ]);
+    $parent->save();
+
+    $child = $this->onlyChildOf($parent);
+    $this->assertSame((int) $hand_made->id(), (int) $child->id(), 'The hand-made link was adopted.');
+    $this->assertFalse($child->isEnabled());
+    $data = $this->dataOf($child);
+    $this->assertTrue($data['managed']);
+    $this->assertTrue($data['disabled_by_save']);
+    $this->assertCount(1, $this->recordsAt(RfcLogLevel::WARNING));
+
+    $this->actAs($this->privileged);
+    $this->syncManager()->reconcile();
+    $this->assertTrue($this->onlyChildOf($parent)->isEnabled());
+  }
+
+  /**
    * Disabled managed children are reported, with the reason.
    *
    * @covers ::disabledManagedChildren

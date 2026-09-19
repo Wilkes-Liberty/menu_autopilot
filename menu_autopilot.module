@@ -550,7 +550,9 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
 
-  $disabled_children = _menu_autopilot_disabled_children_summary($link);
+  // A link with no source has no automatic children: saving it that way
+  // released them.
+  $disabled_children = $source_type === 'none' ? [] : _menu_autopilot_disabled_children_summary($link);
   if ($disabled_children !== []) {
     $form['menu_autopilot']['disabled_children'] = $disabled_children;
     $form['menu_autopilot']['#open'] = TRUE;

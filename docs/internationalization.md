@@ -13,4 +13,8 @@ is core's, not a separate pipeline.
   translatable. Structure is shared; the visible title can vary per language
   once `content_translation` is enabled for `menu_link_content`.
 
+- **Enabled state.** The check for a child that a sync save left disabled reads
+  the link's default translation, the only one the module writes. A
+  translation an editor disabled is not touched.
+
 Locale routing, a language switcher, and translated content belong to the site.
