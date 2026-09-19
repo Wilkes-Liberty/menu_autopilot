@@ -124,6 +124,7 @@ function menu_autopilot_entity_presave(EntityInterface $entity): void {
   /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
   $sync = \Drupal::service('menu_autopilot.sync_manager');
   $sync->flagManagedIfParentMoving($entity);
+  $sync->clearStaleDisabledBySaveFlag($entity);
 }
 
 /**
@@ -360,6 +361,13 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
       '#markup' => t('This link is kept in sync by Menu Autopilot. To change the label pattern or keep a drag-and-drop order, edit the <em>parent</em> item and open its <em>Menu Autopilot</em> section.'),
       '#weight' => 5,
     ];
+    if (!empty($data['disabled_by_save'])) {
+      // No editor disabled this link: one of the sync's own saves did. Say so,
+      // and say what saving this form means, because a sync never enables a
+      // link an editor chose to disable.
+      $form['menu_autopilot_managed']['#markup'] = t('This link is kept in sync by Menu Autopilot. It is disabled because another module disabled it while Menu Autopilot was saving it, not because an editor chose to. The next sync run by an account that may enable menu links enables it. If you save this form with <em>Enabled</em> unchecked, the link stays disabled until an editor enables it.');
+      $form['#entity_builders'][] = '_menu_autopilot_managed_link_form_builder';
+    }
     return;
   }
   $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
@@ -542,6 +550,12 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     '#states' => ['visible' => $visible_if(['term', 'bundle', 'manual'])],
   ];
 
+  $disabled_children = _menu_autopilot_disabled_children_summary($link);
+  if ($disabled_children !== []) {
+    $form['menu_autopilot']['disabled_children'] = $disabled_children;
+    $form['menu_autopilot']['#open'] = TRUE;
+  }
+
   if (\Drupal::moduleHandler()->moduleExists('token')) {
     $form['menu_autopilot']['token_help'] = [
       '#theme' => 'token_tree_link',
@@ -552,6 +566,76 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
 
   $form['#entity_builders'][] = '_menu_autopilot_link_form_builder';
   $form['#validate'][] = '_menu_autopilot_link_form_validate';
+}
+
+/**
+ * Lists a parent's disabled automatic children on its link form.
+ *
+ * The node is published and its link exists, but no menu shows it. Nothing
+ * else in the UI says why, so the parent's Menu Autopilot section does.
+ *
+ * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
+ *   The parent link being edited.
+ *
+ * @return array
+ *   A render array, or an empty array when no automatic child is disabled.
+ */
+function _menu_autopilot_disabled_children_summary(MenuLinkContentInterface $parent): array {
+  if ($parent->isNew()) {
+    return [];
+  }
+  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+  $sync = \Drupal::service('menu_autopilot.sync_manager');
+  $rows = $sync->disabledManagedChildren($parent);
+  if ($rows === []) {
+    return [];
+  }
+  // Bounded: a parent can have hundreds of children.
+  $limit = 20;
+  $items = [];
+  foreach (array_slice($rows, 0, $limit) as $row) {
+    $items[] = $row['disabled_by_save']
+      ? t('@title — disabled by another module while Menu Autopilot was saving it. The next sync run by an account that may enable menu links enables it.', ['@title' => $row['title']])
+      : t('@title — disabled outside Menu Autopilot. It stays disabled until an editor enables it.', ['@title' => $row['title']]);
+  }
+  if (count($rows) > $limit) {
+    $items[] = t('… and @count more.', ['@count' => count($rows) - $limit]);
+  }
+  return [
+    '#theme' => 'item_list',
+    '#title' => \Drupal::translation()->formatPlural(count($rows), '1 automatic child is disabled and does not show in the menu', '@count automatic children are disabled and do not show in the menu'),
+    '#items' => $items,
+    '#weight' => -10,
+  ];
+}
+
+/**
+ * Entity builder for an automatic child that a sync save left disabled.
+ *
+ * An editor who saves the link form with Enabled unchecked has chosen
+ * disabled, so the `disabled_by_save` flag is dropped and no sync enables the
+ * link again. With Enabled checked the flag stays: if this save is disabled
+ * too, a later sync can still enable the link, which is what the editor
+ * asked for. The flag is dropped on the next save once the link is enabled.
+ *
+ * @param string $entity_type_id
+ *   The entity type id ('menu_link_content').
+ * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+ *   The menu link being built.
+ * @param array $form
+ *   The complete form array.
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ *   The current form state.
+ */
+function _menu_autopilot_managed_link_form_builder(string $entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state): void {
+  // No value means the editor could not see the checkbox. That is not a
+  // choice.
+  if (!$form_state->hasValue('enabled') || $link->isEnabled()) {
+    return;
+  }
+  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+  $sync = \Drupal::service('menu_autopilot.sync_manager');
+  $sync->releaseDisabledBySaveFlag($link);
 }
 
 /**

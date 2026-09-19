@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * @file
+ * Test support: a presave hook that disables menu links for chosen accounts.
+ *
+ * `enabled` is the published key of menu_link_content, so a module that
+ * governs publishing can force a link to disabled in presave. This module
+ * does the same for the account ids listed in the
+ * `menu_autopilot_disable_test.restricted_uids` state key, and counts every
+ * menu link save so a test can prove a sync does not save in a loop.
+ */
+
+use Drupal\menu_link_content\MenuLinkContentInterface;
+
+/**
+ * Implements hook_ENTITY_TYPE_presave() for menu_link_content.
+ */
+function menu_autopilot_disable_test_menu_link_content_presave(MenuLinkContentInterface $link): void {
+  $state = \Drupal::state();
+  $state->set('menu_autopilot_disable_test.saves', (int) $state->get('menu_autopilot_disable_test.saves', 0) + 1);
+
+  $restricted = $state->get('menu_autopilot_disable_test.restricted_uids', []);
+  if (in_array((int) \Drupal::currentUser()->id(), $restricted, TRUE)) {
+    $link->setUnpublished();
+  }
+}

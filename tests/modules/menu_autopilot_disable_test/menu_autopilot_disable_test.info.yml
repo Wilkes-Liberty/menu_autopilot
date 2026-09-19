@@ -1,0 +1,7 @@
+name: 'Menu Autopilot disable test'
+type: module
+description: 'Test support: forces menu links saved by chosen accounts to disabled, the way a publication-governance module can.'
+package: Testing
+hidden: true
+dependencies:
+  - drupal:menu_link_content

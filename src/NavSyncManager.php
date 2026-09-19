@@ -9,11 +9,13 @@ use Drupal\Core\DestructableInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
+use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\Utility\Token;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\NodeInterface;
 use Drupal\path_alias\PathAliasInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * Keeps auto-generated child menu links in sync with their source content.
@@ -23,6 +25,12 @@ use Drupal\path_alias\PathAliasInterface;
  * menu consumer (GraphQL, JSON:API, a theme) sees them with no extra work.
  * Every managed link uses a canonical `entity:node/<nid>` URI so it resolves to
  * the node's real path alias — never a raw or editorial path.
+ *
+ * The map also carries `disabled_by_save => TRUE` when one of this manager's
+ * own saves asked for an enabled child and storage holds a disabled one.
+ * Another module's presave hook can do that: `enabled` is the published key of
+ * menu_link_content. The flag separates those links from the ones an editor
+ * disabled, which a sync never enables.
  */
 final class NavSyncManager implements DestructableInterface {
 
@@ -47,12 +55,24 @@ final class NavSyncManager implements DestructableInterface {
    */
   private array $pendingManagedDeletes = [];
 
+  /**
+   * Flagged links this request already tried to enable, per acting account.
+   *
+   * Keys are link ids, then account ids. One try per account per request: an
+   * account whose save was disabled once gets the same answer again.
+   *
+   * @var array<int, array<int, true>>
+   */
+  private array $enableAttempts = [];
+
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
     private readonly ConfigFactoryInterface $configFactory,
     private readonly NavSourceResolver $resolver,
     private readonly Token $token,
     private readonly ModuleHandlerInterface $moduleHandler,
+    private readonly AccountProxyInterface $currentUser,
+    private readonly LoggerInterface $logger,
   ) {}
 
   /**
@@ -180,6 +200,71 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
+   * Drop a `disabled_by_save` flag from a link that has since been enabled.
+   *
+   * Runs in presave for saves that are not this manager's own. A flagged link
+   * that is enabled in storage was enabled by someone else, for example on
+   * the menu overview form, where no sync runs. The flag has done its job.
+   * Dropping it here means a later editor disable is never undone by a sync.
+   */
+  public function clearStaleDisabledBySaveFlag(MenuLinkContentInterface $link): void {
+    if ($this->syncing || !$link->id() || !$this->isDisabledBySave($link)) {
+      return;
+    }
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
+      $this->setDisabledBySave($link, FALSE);
+    }
+  }
+
+  /**
+   * Make a disabled, flagged link the editor's own choice.
+   *
+   * Called when the link form is saved with Enabled unchecked. Does not save.
+   */
+  public function releaseDisabledBySaveFlag(MenuLinkContentInterface $link): void {
+    if ($this->isDisabledBySave($link)) {
+      $this->setDisabledBySave($link, FALSE);
+    }
+  }
+
+  /**
+   * Managed children that are disabled, so an operator can find them.
+   *
+   * A sync never enables a link an editor disabled, and it cannot always
+   * enable one that another module's save hook disabled. Both are easy to
+   * miss: the node is published and its link exists, but no menu shows it.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface|null $parent
+   *   Limit the report to one parent, or NULL for every dynamic parent in the
+   *   managed menus.
+   *
+   * @return array<int, array{parent_id: int, parent_title: string, link_id: int, title: string, node: int, disabled_by_save: bool}>
+   *   One row per disabled managed child. `disabled_by_save` is TRUE when a
+   *   sync save left the link disabled and no sync has enabled it since.
+   */
+  public function disabledManagedChildren(?MenuLinkContentInterface $parent = NULL): array {
+    $rows = [];
+    foreach ($parent ? [$parent] : $this->findDynamicParents() as $candidate) {
+      foreach ($this->loadChildren($candidate) as $link) {
+        $data = $this->getData($link);
+        if (empty($data['managed']) || $link->isEnabled()) {
+          continue;
+        }
+        $rows[] = [
+          'parent_id' => (int) $candidate->id(),
+          'parent_title' => (string) $candidate->getTitle(),
+          'link_id' => (int) $link->id(),
+          'title' => (string) $link->getTitle(),
+          'node' => (int) ($data['node'] ?? 0),
+          'disabled_by_save' => !empty($data['disabled_by_save']),
+        ];
+      }
+    }
+    return $rows;
+  }
+
+  /**
    * Delete managed children flagged by flagManagedIfParentMoving().
    *
    * Only children that were moved off $parent are removed. A parent change
@@ -296,7 +381,8 @@ final class NavSyncManager implements DestructableInterface {
           continue;
         }
         if ($link = $owned[$nid] ?? NULL) {
-          $this->updateChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
+          $this->enableIfDisabledBySave($link, $parent, $node);
+          $this->updateChild($link, $parent, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
         }
         elseif ($link = $adoptable[$nid] ?? NULL) {
           if ($policy === 'add') {
@@ -307,7 +393,7 @@ final class NavSyncManager implements DestructableInterface {
             }
             continue;
           }
-          $this->adoptChild($link, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
+          $this->adoptChild($link, $parent, $node, $source, $preserve ? (int) $link->getWeight() : $weight);
           $owned[$nid] = $link;
         }
         else {
@@ -708,10 +794,10 @@ final class NavSyncManager implements DestructableInterface {
    * entity id is preserved so existing references (and a second reconcile)
    * keep the same link.
    */
-  private function adoptChild(MenuLinkContentInterface $link, NodeInterface $node, array $source, int $weight): void {
+  private function adoptChild(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): void {
     $link->set('menu_autopilot', ['managed' => TRUE, 'node' => (int) $node->id()]);
-    $link->save();
-    $this->updateChild($link, $node, $source, $weight);
+    $this->saveChild($link, $parent, $node);
+    $this->updateChild($link, $parent, $node, $source, $weight);
   }
 
   /**
@@ -730,14 +816,133 @@ final class NavSyncManager implements DestructableInterface {
       'enabled' => TRUE,
       'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $node->id()],
     ]);
-    $link->save();
+    $this->saveChild($link, $parent, $node);
     return $link;
+  }
+
+  /**
+   * Save a managed child, then check the save kept it enabled.
+   *
+   * Every write this manager makes to a child goes through here, so a create,
+   * an adopt and an update are all checked the same way. A child that was
+   * already disabled before the save is not checked: that is an editor's
+   * choice, or an earlier save this method already flagged.
+   */
+  private function saveChild(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node): void {
+    $expect_enabled = $link->isEnabled();
+    $created = $link->isNew();
+    $link->save();
+    if ($expect_enabled) {
+      $this->flagIfSaveDisabled($link, $parent, $node, $created);
+    }
+  }
+
+  /**
+   * Log and flag a child that this manager's own save left disabled.
+   *
+   * The sync asked for an enabled link. `enabled` is the published key of
+   * menu_link_content, so another module's presave hook can refuse that for
+   * the acting account. Without this the node is published, the sync reports
+   * nothing, and no menu shows the link.
+   */
+  private function flagIfSaveDisabled(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, bool $created): void {
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    if (!$stored instanceof MenuLinkContentInterface || $stored->isEnabled()) {
+      return;
+    }
+    $uid = (int) $this->currentUser->id();
+    $context = [
+      '%title' => $link->getTitle(),
+      '@link' => $link->id(),
+      '@nid' => $node->id(),
+      '%parent' => $parent->getTitle(),
+      '@parent_id' => $parent->id(),
+      '@uid' => $uid,
+    ];
+    if ($created) {
+      $this->logger->warning('The new menu link %title (link @link) for node @nid under %parent (link @parent_id) was saved disabled, so the menu does not show it. Acting account: uid @uid. Another module disabled it during the save. The next sync run by an account that may enable menu links enables it.', $context);
+    }
+    else {
+      $this->logger->warning('The menu link %title (link @link) for node @nid under %parent (link @parent_id) was enabled, and a sync update saved it disabled, so the menu no longer shows it. Acting account: uid @uid. Another module disabled it during the save. The next sync run by an account that may enable menu links enables it.', $context);
+    }
+    // This account's save was just disabled. Do not try again on its behalf.
+    $this->enableAttempts[(int) $link->id()][$uid] = TRUE;
+    $link->set('enabled', FALSE);
+    $this->setDisabledBySave($link, TRUE);
+    $link->save();
+  }
+
+  /**
+   * Enable a child an earlier save disabled, if this account's save sticks.
+   *
+   * Only links carrying the `disabled_by_save` flag are touched. A link with
+   * no flag was disabled by an editor and stays disabled. The flag is kept
+   * when the save is disabled again, so a later sync by another account can
+   * still enable the link.
+   */
+  private function enableIfDisabledBySave(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node): void {
+    if (!$this->isDisabledBySave($link)) {
+      return;
+    }
+    if ($link->isEnabled()) {
+      // Enabled outside a sync. The flag has nothing left to say, unless this
+      // save is disabled too: saveChild() then flags the link again.
+      $this->setDisabledBySave($link, FALSE);
+      $this->saveChild($link, $parent, $node);
+      return;
+    }
+    $id = (int) $link->id();
+    $uid = (int) $this->currentUser->id();
+    if (isset($this->enableAttempts[$id][$uid])) {
+      return;
+    }
+    $this->enableAttempts[$id][$uid] = TRUE;
+
+    $link->set('enabled', TRUE);
+    $link->save();
+    $stored = $this->menuLinkStorage()->loadUnchanged($id);
+    if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
+      $this->setDisabledBySave($link, FALSE);
+      $this->saveChild($link, $parent, $node);
+      $this->logger->notice('Enabled the menu link %title (link @link) under %parent. An earlier sync save had left it disabled. Acting account: uid @uid.', [
+        '%title' => $link->getTitle(),
+        '@link' => $id,
+        '%parent' => $parent->getTitle(),
+        '@uid' => $uid,
+      ]);
+      return;
+    }
+    // Keep the entity in step with storage so a later save in this sync does
+    // not carry a second attempt.
+    $link->set('enabled', FALSE);
+  }
+
+  /**
+   * Whether one of this manager's saves left a managed link disabled.
+   */
+  private function isDisabledBySave(MenuLinkContentInterface $link): bool {
+    $data = $this->getData($link);
+    return !empty($data['managed']) && !empty($data['disabled_by_save']);
+  }
+
+  /**
+   * Set or remove the `disabled_by_save` flag, keeping the rest of the map.
+   */
+  private function setDisabledBySave(MenuLinkContentInterface $link, bool $flag): void {
+    $data = $this->getData($link);
+    if ($flag) {
+      $data['disabled_by_save'] = TRUE;
+    }
+    else {
+      unset($data['disabled_by_save']);
+    }
+    $link->set('menu_autopilot', $data);
   }
 
   /**
    * Update a managed child link to mirror its node (title, weight, URI).
    */
-  private function updateChild(MenuLinkContentInterface $link, NodeInterface $node, array $source, int $weight): void {
+  private function updateChild(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): void {
     $changed = FALSE;
     $title = $this->linkTitle($node, $source);
     if ($link->getTitle() !== $title) {
@@ -756,7 +961,7 @@ final class NavSyncManager implements DestructableInterface {
       $changed = TRUE;
     }
     if ($changed) {
-      $link->save();
+      $this->saveChild($link, $parent, $node);
     }
   }
 

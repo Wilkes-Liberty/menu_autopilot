@@ -1,9 +1,12 @@
 services:
+  logger.channel.menu_autopilot:
+    parent: logger.channel_base
+    arguments: ['menu_autopilot']
   menu_autopilot.source_resolver:
     class: Drupal\menu_autopilot\NavSourceResolver
     arguments: ['@entity_type.manager', '@module_handler']
   menu_autopilot.sync_manager:
     class: Drupal\menu_autopilot\NavSyncManager
-    arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token', '@module_handler']
+    arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token', '@module_handler', '@current_user', '@logger.channel.menu_autopilot']
     tags:
       - { name: needs_destruction }
