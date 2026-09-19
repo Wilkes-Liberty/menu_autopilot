@@ -131,6 +131,14 @@ jobs:
           # refuses to move the transitive packages the lock pins. -W lets it.
           retry composer require -W --no-interaction --no-progress \
             "drupal/menu_autopilot:*@dev"
+          # Tool API and MCP Sentinel are needed only by the optional
+          # menu_autopilot_mcp submodule. The base module does not depend on
+          # them, and its tests never enable them. Both support ^10.6 || ^11.3,
+          # so every leg installs them. Tool API has beta releases only; the
+          # suffix admits beta for that package alone.
+          retry composer require -W --no-interaction --no-progress \
+            "drupal/mcp_sentinel:^2.22" \
+            "drupal/tool:^1.0.0-beta8"
           retry composer require -W --dev --no-interaction --no-progress \
             "drupal/core-dev:${DRUPAL_CONSTRAINT}" \
             "phpunit/phpunit:${PHPUNIT_VERSION}"
@@ -168,16 +176,21 @@ jobs:
       - name: PHPUnit — Unit + Kernel (blocking)
         working-directory: drupal
         env:
+          # The optional MCP tools tests skip themselves when Tool API and MCP
+          # Sentinel are absent, so a green run alone does not prove they ran.
+          # They have their own floor, apart from MIN_TESTS below, and a
+          # skipped test does not count towards it.
+          MIN_MCP_TESTS: '14'
           # Kernel tests need a database; SQLite keeps this hermetic with no
           # service container. Quoted: the value ends in a colon, which YAML
           # would otherwise read as a mapping key and refuse to parse at all.
           SIMPLETEST_DB: 'sqlite://localhost/:memory:'
           BROWSERTEST_OUTPUT_DIRECTORY: /tmp
           SYMFONY_DEPRECATIONS_HELPER: weak
-          # A dropped suite must fail the build, not pass quietly. 46 tests
-          # collect today, all in tests/src/Kernel. Raise this deliberately as
+          # A dropped suite must fail the build, not pass quietly. 47 tests
+          # collect today outside the MCP submodule, all in tests/src/Kernel. Raise this deliberately as
           # the suite grows; never lower it to make a red run green.
-          MIN_TESTS: '46'
+          MIN_TESTS: '47'
         run: |
           set -euo pipefail
           # One invocation per directory: PHPUnit 9.6 takes a *single*
@@ -190,9 +203,9 @@ jobs:
           config="${PWD}/web/core/phpunit.xml.dist"
           module="${PWD}/web/modules/contrib/menu_autopilot"
 
-          # Directories are discovered, not listed. This module has no
-          # submodules today; when it grows one, its tests get picked up without
-          # anyone remembering to edit this file. A sibling module hard-coded
+          # Directories are discovered, not listed. The menu_autopilot_mcp
+          # submodule's tests are picked up here, and so are the next
+          # submodule's, without anyone remembering to edit this file. A sibling module hard-coded
           # two paths and left three submodule suites ungated for months, with a
           # count floor that could not notice because it counted the same two.
           suites=()
@@ -209,8 +222,12 @@ jobs:
           for dir in "${suites[@]}"; do
             i=$((i + 1))
             echo "--- ${dir#"${module}/"}"
+            case "${dir}" in
+              */modules/menu_autopilot_mcp/*) junit="${PWD}/junit-mcp-${i}.xml" ;;
+              *) junit="${PWD}/junit-base-${i}.xml" ;;
+            esac
             vendor/bin/phpunit -c "${config}" \
-              --log-junit "${PWD}/junit-${i}.xml" \
+              --log-junit "${junit}" \
               "${dir}"
           done
 
@@ -219,10 +236,29 @@ jobs:
           # because its shape is stable across 9.6 and 11, unlike the summary
           # line — and the count is what proves both PHPUnit versions collected
           # the same suite.
-          total="$(cat junit-*.xml | grep -ho '<testcase ' | wc -l | tr -d ' ')"
-          echo "Collected ${total} tests across ${#suites[@]} directories (floor ${MIN_TESTS})."
+          total="$(cat junit-base-*.xml | grep -ho '<testcase ' | wc -l | tr -d ' ')"
+          echo "Collected ${total} tests outside the MCP submodule (floor ${MIN_TESTS})."
           if [ "${total}" -lt "${MIN_TESTS}" ]; then
             echo "::error::Collected only ${total} tests, below the floor of ${MIN_TESTS}. The suite was dropped, not fixed — a passing run on a partial suite is a false green. Investigate before raising or removing this floor."
+            exit 1
+          fi
+
+          # A skipped test still writes a <testcase>, with a <skipped> child.
+          # Count the ones without it.
+          mcp="$(python3 - junit-mcp-*.xml <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          ran = 0
+          for path in sys.argv[1:]:
+              for case in ET.parse(path).getroot().iter('testcase'):
+                  if case.find('skipped') is None:
+                      ran += 1
+          print(ran)
+          PY
+          )"
+          echo "Ran ${mcp} MCP tools tests (floor ${MIN_MCP_TESTS})."
+          if [ "${mcp}" -lt "${MIN_MCP_TESTS}" ]; then
+            echo "::error::Only ${mcp} MCP tools tests ran, below the floor of ${MIN_MCP_TESTS}. They skip when Tool API or MCP Sentinel is missing, so check the install step."
             exit 1
           fi
 
@@ -316,6 +352,12 @@ jobs:
           }
           retry composer require -W --no-interaction --no-progress \
             "drupal/menu_autopilot:*@dev"
+          # The optional menu_autopilot_mcp submodule extends classes from
+          # these two. Without them phpstan reports unknown classes that say
+          # nothing about this module's code.
+          retry composer require -W --no-interaction --no-progress \
+            "drupal/mcp_sentinel:^2.22" \
+            "drupal/tool:^1.0.0-beta8"
           # drush is required, not optional: the module ships Drush commands
           # under src/Drush/Commands, and without it phpstan cannot resolve
           # Drush\Attributes\Command, DrushCommands::logger() or dt() — 15

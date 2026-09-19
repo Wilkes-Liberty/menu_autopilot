@@ -1,0 +1,7 @@
+name: 'Menu Autopilot MCP test'
+type: module
+description: 'Test support: makes the save of one named menu link throw, the way a governance rule can refuse a write.'
+package: Testing
+hidden: true
+dependencies:
+  - drupal:menu_link_content

@@ -1,0 +1,9 @@
+'use menu autopilot mcp tools':
+  title: 'Use Menu Autopilot MCP read tools'
+  description: 'Read which menu links are dynamic parents or automatic children, with counts and titles, through governed MCP tools. Never returns a label pattern or a node field value.'
+  restrict access: true
+
+'normalize menu link uris via mcp':
+  title: 'Normalise menu link URIs through MCP'
+  description: 'Rewrite editorial node link URIs to canonical ones in named managed menus through a governed MCP tool. Also requires the read permission.'
+  restrict access: true

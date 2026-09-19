@@ -1,0 +1,17 @@
+<?php
+
+/**
+ * @file
+ * Test support: a presave hook that refuses to save one named menu link.
+ */
+
+use Drupal\menu_link_content\MenuLinkContentInterface;
+
+/**
+ * Implements hook_ENTITY_TYPE_presave() for menu_link_content.
+ */
+function menu_autopilot_mcp_test_menu_link_content_presave(MenuLinkContentInterface $link): void {
+  if (!$link->isNew() && $link->getTitle() === 'Refuses the save') {
+    throw new \RuntimeException('Refused: write-marker-7Q.');
+  }
+}
