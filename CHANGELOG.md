@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Managed-menus operator copy now matches the sync contract.** The settings
+  description no longer says the Menu Autopilot section appears only on
+  managed menus. The unmanaged-menu parent-form warning no longer says
+  children will not sync: parent save syncs that link; node changes and the
+  rebuild command do not, until the menu is managed.
+
 ## [1.4.1] - 2026-09-19
 
 ### Fixed

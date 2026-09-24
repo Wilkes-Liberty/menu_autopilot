@@ -425,11 +425,11 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
     return $states;
   };
 
-  // Warn when this link's menu is not one Menu Autopilot manages: a descriptor
-  // saved here is stored but never synced until the menu is enabled.
+  // Warn when this link's menu is not managed: parent save still syncs; node
+  // changes and the rebuild command do not, until the menu is enabled.
   $menu_name = $link->getMenuName();
   if ($menu_name && !in_array($menu_name, $managed_menus, TRUE)) {
-    $description = t('This link’s menu is not enabled for Menu Autopilot, so children configured here will not sync until it is enabled on the <a href=":settings">settings page</a>.', [':settings' => $settings_url]);
+    $description = t('This link’s menu is not a managed menu. Saving this link syncs its children. Node changes and the rebuild command do not, until the menu is enabled on the <a href=":settings">settings page</a>.', [':settings' => $settings_url]);
   }
   else {
     $description = t('Menu Autopilot generates this link’s children from published content and keeps them in sync. Only menus enabled on the <a href=":settings">settings page</a> are synced.', [':settings' => $settings_url]);
