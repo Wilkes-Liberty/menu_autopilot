@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-24
+
 ### Fixed
 - **Managed-menus operator copy now matches the sync contract.** The settings
   description no longer says the Menu Autopilot section appears only on
