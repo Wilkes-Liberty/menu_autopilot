@@ -6,6 +6,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Help page no longer says the Menu Autopilot section is managed-menu-only.**
+  The section is offered on any link that is not an automatic child.
+
 ## [1.4.2] - 2026-09-24
 
 ### Fixed

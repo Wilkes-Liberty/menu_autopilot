@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\menu_autopilot\Kernel;
 
+use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\menu_autopilot\Form\MenuAutopilotSettingsForm;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
@@ -13,9 +14,9 @@ use Drupal\menu_link_content\Entity\MenuLinkContent;
  *
  * The Menu Autopilot section is offered on any non-owned link. Parent save
  * syncs that link. Node changes and `drush menu-autopilot:rebuild` do not,
- * until the menu is managed. Settings and the unmanaged-menu parent-form
- * warning must say that; they must not claim the section is managed-only
- * or that unmanaged children "will not sync".
+ * until the menu is managed. Settings, help, and the unmanaged-menu
+ * parent-form warning must say that; they must not claim the section is
+ * managed-only or that unmanaged children "will not sync".
  *
  * @group menu_autopilot
  */
@@ -105,6 +106,30 @@ final class ManagedMenusOperatorCopyTest extends KernelTestBase {
     $this->assertStringContainsString(
       'Node changes and the rebuild command do not',
       $description,
+    );
+  }
+
+  /**
+   * Help must not say the section appears only on managed menus.
+   */
+  public function testHelpDoesNotSaySectionIsManagedMenuOnly(): void {
+    $help = (string) $this->container->get('module_handler')->invoke(
+      'menu_autopilot',
+      'help',
+      [
+        'help.page.menu_autopilot',
+        $this->createMock(RouteMatchInterface::class),
+      ],
+    );
+
+    $this->assertStringNotContainsString(
+      'in a managed menu',
+      $help,
+      'Help must not say the section appears only on managed menus.',
+    );
+    $this->assertStringContainsString(
+      'Edit any link that is not an automatic child',
+      $help,
     );
   }
 
