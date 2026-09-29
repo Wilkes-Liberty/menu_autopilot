@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-09-29
+
+### Removed
+- Always-green `composer-audit` GitHub Actions workflow (and its Dependabot
+  ignore). Auditing stays in Composer locally; the workflow never failed.
+
 ## [1.4.3] - 2026-09-28
 
 ### Fixed
