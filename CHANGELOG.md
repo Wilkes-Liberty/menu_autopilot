@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-09-30
+
+### Changed
+- NavSyncManager shares its source, child-policy, and editor-order helpers
+  with the link-info tool. `flushPendingManagedDeletes()` is private.
+  Sync behavior is unchanged.
+
 ## [1.4.4] - 2026-09-29
 
 ### Removed
