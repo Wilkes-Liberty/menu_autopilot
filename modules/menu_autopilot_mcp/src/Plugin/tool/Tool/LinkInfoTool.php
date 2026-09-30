@@ -94,7 +94,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     $parent_source = $this->sourceOf($this->parentOf($link));
     $info['under_dynamic_parent'] = $parent_source !== [];
     if ($parent_source !== []) {
-      $info['parent_existing_children'] = _menu_autopilot_existing_children_policy($parent_source['existing_children'] ?? 'adopt');
+      $info['parent_existing_children'] = $this->syncManager->existingChildrenPolicy($parent_source);
     }
 
     if (!empty($data['managed'])) {
@@ -109,7 +109,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     if ($source !== []) {
       $info['role'] = 'dynamic_parent';
       $info['source_type'] = (string) $source['type'];
-      $info['existing_children'] = _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt');
+      $info['existing_children'] = $this->syncManager->existingChildrenPolicy($source);
       $info['effect_of_client_edit'] = $this->dynamicParentEffect($source, $info['existing_children'], $info['menu_is_managed']);
       return $info;
     }
@@ -147,8 +147,8 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
       return [];
     }
     $data = _menu_autopilot_link_data($link);
-    $source = $data['source'] ?? NULL;
-    if (!empty($data['managed']) || !is_array($source) || ($source['type'] ?? 'none') === 'none') {
+    $source = $this->syncManager->getSource($link);
+    if (!empty($data['managed']) || ($source['type'] ?? 'none') === 'none') {
       return [];
     }
     return $source;
@@ -158,7 +158,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
    * What an edit to an automatic child does.
    */
   private function managedChildEffect(array $parent_source): string {
-    $keeps_weight = ($parent_source['type'] ?? '') !== 'manual' && ($parent_source['sort'] ?? '') === 'preserve';
+    $keeps_weight = $this->syncManager->preservesEditorOrder($parent_source);
     $overwritten = $keeps_weight
       ? 'Title and URI are overwritten on the next sync of its parent. Weight is kept, because the parent keeps the current order.'
       : 'Title, weight and URI are overwritten on the next sync of its parent.';
