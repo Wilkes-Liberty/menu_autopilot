@@ -347,7 +347,7 @@ final class NavSyncManager implements DestructableInterface {
    * @param \Drupal\menu_link_content\MenuLinkContentInterface $parent
    *   The parent being deleted.
    */
-  public function flushPendingManagedDeletes(MenuLinkContentInterface $parent): void {
+  private function flushPendingManagedDeletes(MenuLinkContentInterface $parent): void {
     if ($this->pendingManagedDeletes === [] || $this->syncing) {
       return;
     }
@@ -1055,8 +1055,14 @@ final class NavSyncManager implements DestructableInterface {
    *
    * Manual sources always follow the hand-picked node list, even if a leftover
    * or site-default `preserve` value is stored on the descriptor.
+   *
+   * @param array $source
+   *   The parent source descriptor.
+   *
+   * @return bool
+   *   TRUE when child weights are left alone.
    */
-  private function preservesEditorOrder(array $source): bool {
+  public function preservesEditorOrder(array $source): bool {
     return ($source['type'] ?? '') !== 'manual' && ($source['sort'] ?? '') === 'preserve';
   }
 
@@ -1087,14 +1093,14 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * How unmanaged children under a parent are treated during sync.
    *
+   * @param array $source
+   *   The parent source descriptor.
+   *
    * @return string
    *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
    */
-  private function existingChildrenPolicy(array $source): string {
-    $policy = (string) ($source['existing_children'] ?? 'adopt');
-    return in_array($policy, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
-      ? $policy
-      : 'adopt';
+  public function existingChildrenPolicy(array $source): string {
+    return _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt');
   }
 
   /**
@@ -1111,8 +1117,14 @@ final class NavSyncManager implements DestructableInterface {
 
   /**
    * The parent link's source descriptor (empty when it is not dynamic).
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
+   * @return array
+   *   The stored source map, or an empty array.
    */
-  private function getSource(MenuLinkContentInterface $link): array {
+  public function getSource(MenuLinkContentInterface $link): array {
     $source = $this->getData($link)['source'] ?? NULL;
     return is_array($source) ? $source : [];
   }
@@ -1128,11 +1140,7 @@ final class NavSyncManager implements DestructableInterface {
    * Read the `menu_autopilot` map field off a link.
    */
   private function getData(MenuLinkContentInterface $link): array {
-    if (!$link->hasField('menu_autopilot') || $link->get('menu_autopilot')->isEmpty()) {
-      return [];
-    }
-    $value = $link->get('menu_autopilot')->first()->getValue();
-    return is_array($value) ? $value : [];
+    return _menu_autopilot_link_data($link);
   }
 
   /**
