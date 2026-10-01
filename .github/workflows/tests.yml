@@ -3,7 +3,7 @@ name: Tests
 # Runs the PHPUnit suite and the static checks on every PR and on push to 1.x.
 #
 # Until this existed, GitHub ran no tests at all for this module: only
-# changelog, composer-audit and dependabot-automerge. The drupalcode pipeline
+# changelog and dependabot-automerge. The drupalcode pipeline
 # was the single venue that could see a regression, and a repo whose only gate
 # lives somewhere else is a repo where a PR can go green, merge and ship while
 # the suite is broken. It also let the two venues disagree silently, which is
@@ -46,10 +46,8 @@ jobs:
           # phpunit is pinned per leg because Drupal 10's core-dev hard-requires
           # ^9.6. That version predates PHP 8 attributes and does not error on
           # one it cannot read — it ignores it, and quietly collects fewer
-          # tests. This suite is annotation-only today (@group, @coversDefaultClass,
-          # @covers) so both versions see all 5, but the count floor below is
-          # what proves it rather than assuming it. Add an attribute without its
-          # annotation and the 10.6 leg goes red, which is the point.
+          # tests. The count floor below is what proves both versions collected
+          # the same suite rather than assuming it.
           - drupal: '10.6'
             constraint: '~10.6.0'
             php: '8.3'
@@ -187,7 +185,7 @@ jobs:
           SIMPLETEST_DB: 'sqlite://localhost/:memory:'
           BROWSERTEST_OUTPUT_DIRECTORY: /tmp
           SYMFONY_DEPRECATIONS_HELPER: weak
-          # A dropped suite must fail the build, not pass quietly. 64 tests
+          # A dropped suite must fail the build, not pass quietly. 67 tests
           # collect today outside the MCP submodule, all in tests/src/Kernel. Raise this deliberately as
           # the suite grows; never lower it to make a red run green.
           MIN_TESTS: '67'
