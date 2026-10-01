@@ -50,11 +50,10 @@ phpunit -c web/core web/modules/contrib/menu_autopilot
 
 ## Accessibility
 
-Accessibility is a first-class goal of this project. Navigation is one of the most
-accessibility-sensitive parts of any site, so changes that affect the rendered menu or
-the recommended frontend pattern must preserve WCAG 2.1 AA conformance (keyboard
-operability, focus visibility, correct roles and names). Please call out accessibility
-implications in your pull request.
+Accessibility is a first-class goal of this project. See `docs/accessibility.md` for
+the recommended frontend pattern (disclosure navigation, not a menubar). The module
+ships menu data, not frontend markup. Please call out accessibility implications in
+your pull request.
 
 ## License
 
