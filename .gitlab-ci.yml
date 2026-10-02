@@ -26,3 +26,17 @@ variables:
   _AUTORUN_PREVIOUS_MINOR: 'all'
   # Forward-compat signal on the upcoming minor, available on demand (manual).
   OPT_IN_TEST_NEXT_MINOR: '1'
+  # Dictionary is now complete for the words job 12543234 reported. Make the
+  # job blocking so a new misspelling cannot sit amber and mail every pipeline.
+  _CSPELL_ALLOW_FAILURE: '0'
+
+# composer (previous major) uses CORE_PREVIOUS_PHP_MIN (8.1) by default. That
+# matches composer.json "php": ">=8.1" and Drupal 10.6's floor. Pin it so a
+# templates bump cannot move the lane onto 8.3 (or off 8.1) and silently stop
+# exercising the declared floor. Do not skip, allow_failure, or raise the
+# php/core constraint: job 12543226 on pipeline 982780 already installed
+# Drupal 10.6.18 on PHP 8.1.34. Raising the floor would drop real D10/8.1
+# sites; skipping would leave ^10.6 unverified on drupalcode.
+composer (previous major):
+  variables:
+    PHP_VERSION: '8.1'
