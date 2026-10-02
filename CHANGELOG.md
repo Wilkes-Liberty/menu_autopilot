@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.6] - 2026-10-02
+
+### Changed
+- Drupal.org GitLab CI: the project cspell dictionary and the previous-major
+  PHP pin keep the pipeline green.
+- Stale composer-audit and test-count copy is removed from the docs.
+  Behavior is unchanged.
+
 ## [1.4.5] - 2026-09-30
 
 ### Changed
