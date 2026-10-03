@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Drupal.org phpstan (and phpstan previous major) no longer scan the
+  optional `menu_autopilot_mcp` tools. Those jobs do not install Tool API
+  or MCP Sentinel, and requiring them would break composer (previous
+  major) on PHP 8.1. GitHub phpstan still analyzes the tools.
+
 ## [1.4.6] - 2026-10-02
 
 ### Changed

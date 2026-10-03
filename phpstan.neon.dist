@@ -1,5 +1,8 @@
 # PHPStan configuration for Menu Autopilot.
-# Run on Drupal CI via commit-code-check.sh; phpstan-drupal is provided there.
+# GitHub phpstan and local analysis use this file and include the optional
+# MCP tools (those runs install Tool API and MCP Sentinel). Drupal.org
+# prefers phpstan.neon, which includes this file and excludes
+# modules/menu_autopilot_mcp.
 includes:
   - phar://phpstan.phar/conf/bleedingEdge.neon
 
