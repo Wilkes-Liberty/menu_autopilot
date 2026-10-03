@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.7] - 2026-10-03
+
 ### Changed
 - Drupal.org phpstan (and phpstan previous major) no longer scan the
   optional `menu_autopilot_mcp` tools. Those jobs do not install Tool API
