@@ -40,3 +40,9 @@ variables:
 composer (previous major):
   variables:
     PHP_VERSION: '8.1'
+
+# phpstan / phpstan (previous major) use phpstan.neon, which excludes
+# modules/menu_autopilot_mcp. Do not add drupal/mcp_sentinel or drupal/tool
+# to require-dev to "fix" those jobs: tool requires PHP >=8.2 and
+# mcp_sentinel requires PHP 8.3+, which would fail this PHP 8.1 lane.
+# Do not set SKIP_PHPSTAN. GitHub phpstan still analyzes the tools.

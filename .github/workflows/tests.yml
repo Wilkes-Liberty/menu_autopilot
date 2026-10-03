@@ -381,8 +381,10 @@ jobs:
         working-directory: drupal
         run: |
           set -euo pipefail
-          # The module's own phpstan.neon.dist, so this and the drupalcode
-          # phpstan job answer the same question.
+          # Must stay on phpstan.neon.dist. Drupal.org prefers phpstan.neon,
+          # which excludes modules/menu_autopilot_mcp because those jobs do
+          # not install Tool API or MCP Sentinel. This job does install them,
+          # so the tools stay in the analysis here.
           vendor/bin/phpstan analyze web/modules/contrib/menu_autopilot \
             -c web/modules/contrib/menu_autopilot/phpstan.neon.dist \
             --autoload-file=vendor/autoload.php \

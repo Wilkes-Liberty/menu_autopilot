@@ -1,0 +1,16 @@
+# Drupal.org phpstan config. PHPStan prefers this file over phpstan.neon.dist.
+#
+# The optional menu_autopilot_mcp tools extend classes from drupal/tool and
+# drupal/mcp_sentinel. GitHub's phpstan job installs both and analyzes those
+# tools via phpstan.neon.dist. Drupal.org composer does not install them, and
+# they cannot be added as require-dev without breaking composer (previous
+# major) on the PHP 8.1 floor (tool requires >=8.2; mcp_sentinel requires
+# PHP 8.3+). Scanning the submodule here is unknown-class noise: pipeline
+# 985808 jobs 12596203 and 12596204, allow_failure, every path under
+# modules/menu_autopilot_mcp. Exclude the submodule on d.o only.
+includes:
+  - phpstan.neon.dist
+
+parameters:
+  excludePaths:
+    - modules/menu_autopilot_mcp

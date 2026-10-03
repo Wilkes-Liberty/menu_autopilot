@@ -41,7 +41,8 @@ This module targets Drupal 10.6+/11.3+ and PHP 8.1+. Please run the same checks 
 # Drupal coding standards
 phpcs --standard=Drupal,DrupalPractice /path/to/menu_autopilot
 
-# Static analysis
+# Static analysis (phpstan.neon.dist includes the MCP tools; phpstan.neon
+# is the Drupal.org file that skips them because those jobs lack the classes)
 phpstan analyse -c phpstan.neon.dist
 
 # Tests (from a Drupal codebase that contains the module)

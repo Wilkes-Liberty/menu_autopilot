@@ -15,5 +15,6 @@
 /.gitlab-ci.yml     export-ignore
 /.github            export-ignore
 /phpcs.xml.dist     export-ignore
+/phpstan.neon       export-ignore
 /phpstan.neon.dist  export-ignore
 /CONTRIBUTING.md    export-ignore
