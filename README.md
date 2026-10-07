@@ -35,7 +35,10 @@ that gap.
   (e.g. `[node:title] [node:field_subtitle]`) so nav can include a subtitle or a shorter
   label without touching the page title. URIs are never tokenized, so the clean-URL
   guarantee always holds.
-- **Multilingual.** Synced links are translatable and language-aware.
+- **Multilingual.** When content translation is enabled for menu links, each
+  language a node is translated into gets a menu-link translation with that
+  language's label. A link translation in a language the node no longer has
+  is removed on the next sync.
 - **Decoupled-ready.** It produces real `menu_link_content` links, so the composed tree is
   exposed by *any* menu consumer — GraphQL (GraphQL Compose), JSON:API, or a traditional theme
   — with no extra work.
@@ -128,7 +131,7 @@ when that is lower.
 
 | Tool | Kind | What it returns |
 | --- | --- | --- |
-| `menu_autopilot_status` | read | The managed menus. Each dynamic parent: title, UUID, menu, source type, existing-children policy, and counts of owned, adoptable, extra and disabled children. Disabled automatic children by title and node id, marked when a sync save, not an editor, disabled them. At most 50 parents and 25 listed children per parent; flags say when a list was cut. |
+| `menu_autopilot_status` | read | The managed menus. Each dynamic parent: title, UUID, menu, source type, existing-children policy, and counts of owned, adoptable, extra, disabled children and stale translations. Disabled automatic children by title and node id, marked when a sync save, not an editor, disabled them. Translations of automatic children by node id, language code and title, marked stale when the node has no translation in that language. At most 50 parents, 25 disabled children and 25 translations per parent; flags say when a list was cut. |
 | `menu_autopilot_link_info` | read | For one `menu_link_content` UUID: `dynamic_parent`, `managed_child` (with the node id) or `plain`; whether it sits under a dynamic parent and that parent's policy; and `effect_of_client_edit`, a plain sentence such as "Title, weight and URI are overwritten on the next sync of its parent." |
 | `menu_autopilot_normalize_uris` | write | Runs `menu-autopilot:normalize-uris` for one to ten named menus. Each name must be a managed menu. Returns each changed link id, its new `entity:node/<nid>` URI and `applied`. Lists at most 100 changes. Also needs the restricted `normalize menu link uris via mcp` permission. |
 
@@ -145,8 +148,10 @@ a save with an exception, the tool stops and returns `completed: false` with
 safe to repeat.
 
 The status counts say what is under each parent now. `adoptable` means an
-unmanaged child that points at a node. The tool does not resolve the source, so
-it does not predict what the next sync will do with it.
+unmanaged child that points at a node. A stale translation is a link
+translation in a language the node does not have. The next sync removes it.
+The tool does not resolve the source, so it does not predict what the next
+sync will do with an adoptable child.
 
 No tool returns the child label pattern or any node field value. A pattern can
 name any node field, and its output is already the public link title. The old

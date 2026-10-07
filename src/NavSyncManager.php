@@ -280,11 +280,18 @@ final class NavSyncManager implements DestructableInterface {
    * - `disabled`: owned children that are disabled.
    * - `disabled_by_save`: the disabled ones a sync save, not an editor,
    *   left disabled.
+   * - `stale_translations`: owned-child translations whose language the
+   *   node does not have. The next sync removes them. The link's own
+   *   language is not counted: that translation cannot be removed.
+   *
+   * `translations` lists those titles (node id, language code, title, and
+   * whether it is stale). It is capped separately from `disabled_children`.
    *
    * @param int $max_parents
    *   The most parents to describe. `parents_total` still counts them all.
    * @param int $max_listed
-   *   The most disabled children to list under one parent.
+   *   The most disabled children to list under one parent, and separately
+   *   the most translations.
    *
    * @return array{managed_menus: string[], parents_total: int, parents_truncated: bool, parents: list<array<string, mixed>>}
    *   The report.
@@ -312,6 +319,7 @@ final class NavSyncManager implements DestructableInterface {
           'disabled_by_save' => $by_save,
         ];
       }
+      [$translations, $stale_translations] = $this->linkTranslationReport($partition['owned']);
       $rows[] = [
         'uuid' => (string) $parent->uuid(),
         'title' => (string) $parent->getTitle(),
@@ -325,9 +333,12 @@ final class NavSyncManager implements DestructableInterface {
           'extra' => count($siblings) - count($partition['owned']) - count($partition['adoptable']),
           'disabled' => count($disabled),
           'disabled_by_save' => $disabled_by_save,
+          'stale_translations' => $stale_translations,
         ],
         'disabled_children' => array_slice($disabled, 0, $max_listed),
         'disabled_children_truncated' => count($disabled) > $max_listed,
+        'translations' => array_slice($translations, 0, $max_listed),
+        'translations_truncated' => count($translations) > $max_listed,
       ];
     }
     return [
@@ -892,15 +903,19 @@ final class NavSyncManager implements DestructableInterface {
    *   The saved child link.
    */
   private function createChild(MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): MenuLinkContentInterface {
+    $node = $node->getUntranslated();
     $link = MenuLinkContent::create([
       'menu_name' => $parent->getMenuName(),
       'parent' => 'menu_link_content:' . $parent->uuid(),
+      'langcode' => $node->language()->getId(),
       'title' => $this->linkTitle($node, $source),
       'link' => ['uri' => 'entity:node/' . $node->id()],
       'weight' => $weight,
       'enabled' => TRUE,
       'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $node->id()],
     ]);
+    // Translations are written before the first save, so create is one write.
+    $this->syncLinkTitles($link, $node, $source);
     $this->saveChild($link, $parent, $node);
     return $link;
   }
@@ -1028,12 +1043,9 @@ final class NavSyncManager implements DestructableInterface {
    * Update a managed child link to mirror its node (title, weight, URI).
    */
   private function updateChild(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): void {
-    $changed = FALSE;
-    $title = $this->linkTitle($node, $source);
-    if ($link->getTitle() !== $title) {
-      $link->set('title', $title);
-      $changed = TRUE;
-    }
+    $link = $link->getUntranslated();
+    $node = $node->getUntranslated();
+    $changed = $this->syncLinkTitles($link, $node, $source);
     if (!$this->preservesEditorOrder($source) && (int) $link->getWeight() !== $weight) {
       $link->set('weight', $weight);
       $changed = TRUE;
@@ -1067,9 +1079,129 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
-   * The title for a managed child link.
+   * Write one title per language the node has, and drop the rest.
    *
-   * When the source defines a `title_pattern`, it is run through the token
+   * The link keeps its own language. That title comes from the node
+   * translation in the same language, or from the node's default
+   * translation when the node has none. Every other language the node has
+   * is created or updated. A link translation the node does not have is
+   * removed. Only `title` is written. The caller saves once.
+   *
+   * @return bool
+   *   TRUE when a title was added, changed, or removed.
+   */
+  private function syncLinkTitles(MenuLinkContentInterface $link, NodeInterface $node, array $source): bool {
+    $link = $link->getUntranslated();
+    $node = $node->getUntranslated();
+    $changed = FALSE;
+    $node_languages = $node->getTranslationLanguages();
+    $link_lang = $link->language()->getId();
+    $source_node = isset($node_languages[$link_lang]) ? $node->getTranslation($link_lang) : $node;
+    $title = $this->linkTitle($source_node, $source);
+    if ($link->getTitle() !== $title) {
+      $link->set('title', $title);
+      $changed = TRUE;
+    }
+    if (!$link->isTranslatable()) {
+      return $changed;
+    }
+
+    foreach ($node_languages as $langcode => $language) {
+      if ($langcode === $link_lang || $language->isLocked()) {
+        continue;
+      }
+      $translated_title = $this->linkTitle($node->getTranslation($langcode), $source);
+      if ($link->hasTranslation($langcode)) {
+        $translation = $link->getTranslation($langcode);
+        if ($translation->getTitle() !== $translated_title) {
+          $translation->set('title', $translated_title);
+          $changed = TRUE;
+        }
+        continue;
+      }
+      try {
+        $link->addTranslation($langcode, ['title' => $translated_title]);
+        $changed = TRUE;
+      }
+      catch (\InvalidArgumentException $exception) {
+        // A language the node still names, but menu links cannot use
+        // (removed from the site, or locked). Keep going: one language
+        // must not abort the rest of this parent's sync.
+        $this->logger->error('Menu link @link for node @nid was not given a @langcode translation. @message', [
+          '@link' => (string) ($link->id() ?: 'new'),
+          '@nid' => (string) $node->id(),
+          '@langcode' => $langcode,
+          '@message' => $exception->getMessage(),
+        ]);
+      }
+    }
+
+    foreach (array_keys($link->getTranslationLanguages()) as $langcode) {
+      if ($langcode === $link_lang || isset($node_languages[$langcode])) {
+        continue;
+      }
+      $this->logger->notice('Removed the @langcode translation of menu link %title (link @link) for node @nid. The node no longer has that translation.', [
+        '@langcode' => $langcode,
+        '%title' => $link->getTranslation($langcode)->getTitle(),
+        '@link' => (string) ($link->id() ?: 'new'),
+        '@nid' => (string) $node->id(),
+      ]);
+      $link->removeTranslation($langcode);
+      $changed = TRUE;
+    }
+    return $changed;
+  }
+
+  /**
+   * Translated titles on owned children, for the status report.
+   *
+   * The link's own language is left out. A row is stale when the node has
+   * no translation in that language, including when the node is gone.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface[] $owned
+   *   Owned children keyed by node id.
+   *
+   * @return array
+   *   A list of two elements: the rows (node, langcode, title, stale),
+   *   sorted by node id then language code, and the stale count.
+   */
+  private function linkTranslationReport(array $owned): array {
+    $ids = array_map('intval', array_keys($owned));
+    $nodes = $ids === [] ? [] : $this->entityTypeManager->getStorage('node')->loadMultiple($ids);
+    $rows = [];
+    $stale = 0;
+    foreach ($owned as $nid => $link) {
+      $link = $link->getUntranslated();
+      $default_lang = $link->language()->getId();
+      $node = $nodes[(int) $nid] ?? NULL;
+      $node_languages = $node instanceof NodeInterface
+        ? $node->getUntranslated()->getTranslationLanguages()
+        : [];
+      foreach (array_keys($link->getTranslationLanguages()) as $langcode) {
+        if ($langcode === $default_lang) {
+          continue;
+        }
+        $is_stale = !isset($node_languages[$langcode]);
+        $stale += (int) $is_stale;
+        $rows[] = [
+          'node' => (int) $nid,
+          'langcode' => $langcode,
+          'title' => (string) $link->getTranslation($langcode)->getTitle(),
+          'stale' => $is_stale,
+        ];
+      }
+    }
+    usort($rows, static function (array $a, array $b): int {
+      return [$a['node'], $a['langcode']] <=> [$b['node'], $b['langcode']];
+    });
+    return [$rows, $stale];
+  }
+
+  /**
+   * The title for a managed child link in the language of $node.
+   *
+   * Callers pass the node translation whose label should be stored. When
+   * the source defines a `title_pattern`, it is run through the token
    * service as plain text (e.g. `[node:title]`, `[node:field_nav_title]`) so
    * editors can give nav a shorter or decorated label than the page title;
    * unreplaced tokens are cleared. Markup replace would HTML-escape
