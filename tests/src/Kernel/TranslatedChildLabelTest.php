@@ -104,7 +104,6 @@ final class TranslatedChildLabelTest extends KernelTestBase {
       $link->getTranslation('fr')->get('link')->first()->getValue()['uri'],
     );
     $french = $this->container->get('entity.repository')->getTranslationFromContext($link, 'fr');
-    $this->assertInstanceOf(MenuLinkContentInterface::class, $french);
     $this->assertSame('Helios FR / fr', $french->getTitle());
 
     $node->setTitle('Helios 2');
@@ -261,9 +260,7 @@ final class TranslatedChildLabelTest extends KernelTestBase {
   private function onlyChild(MenuLinkContentInterface $parent): MenuLinkContentInterface {
     $children = $this->childrenOf($parent);
     $this->assertCount(1, $children);
-    $link = reset($children);
-    $this->assertInstanceOf(MenuLinkContentInterface::class, $link);
-    return $link;
+    return reset($children);
   }
 
   /**
