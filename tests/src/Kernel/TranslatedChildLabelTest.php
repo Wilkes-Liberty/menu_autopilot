@@ -187,6 +187,34 @@ final class TranslatedChildLabelTest extends KernelTestBase {
   }
 
   /**
+   * A bundle that cannot be translated keeps Drupal's default language.
+   *
+   * The French title is still stored. No French link translation is created.
+   *
+   * @covers ::syncNode
+   */
+  public function testNonTranslatableBundleKeepsTheSiteDefaultLanguage(): void {
+    $manager = $this->container->get('content_translation.manager');
+    $manager->setEnabled('menu_link_content', 'menu_link_content', FALSE);
+    $this->container->get('entity_type.bundle.info')->clearCachedBundles();
+
+    $parent = $this->createParent();
+    $node = Node::create([
+      'type' => 'page',
+      'title' => 'Helios FR',
+      'langcode' => 'fr',
+      'status' => 1,
+    ]);
+    $node->save();
+
+    $link = $this->onlyChild($parent);
+    $this->assertFalse($link->isTranslatable());
+    $this->assertSame('en', $link->language()->getId());
+    $this->assertSame('Helios FR / fr', $link->getTitle());
+    $this->assertSame(['en'], array_keys($link->getTranslationLanguages()));
+  }
+
+  /**
    * Adopting a link leaves its language in place and fills in the node's.
    *
    * The German link has no German node translation, so its own title falls

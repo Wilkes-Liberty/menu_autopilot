@@ -5,8 +5,10 @@ is core's, not a separate pipeline.
 
 - **Title.** When content translation is enabled for menu links, sync writes
   the `title` field in every language the source node has. A new link is
-  created in the node's default language. A link that already exists keeps
-  its language: its title comes from the node translation in that language,
+  created in the node's default language. When menu links are not
+  translatable, a new link keeps the language Drupal assigns and only that
+  title is stored. A link that already exists keeps its language: its title
+  comes from the node translation in that language,
   or from the node's default translation when the node has none. Each other
   node language is created or updated on the link. A link translation in a
   language the node no longer has is removed on the next sync. The title is

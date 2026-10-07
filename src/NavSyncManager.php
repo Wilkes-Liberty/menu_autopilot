@@ -904,16 +904,23 @@ final class NavSyncManager implements DestructableInterface {
    */
   private function createChild(MenuLinkContentInterface $parent, NodeInterface $node, array $source, int $weight): MenuLinkContentInterface {
     $node = $node->getUntranslated();
-    $link = MenuLinkContent::create([
+    $values = [
       'menu_name' => $parent->getMenuName(),
       'parent' => 'menu_link_content:' . $parent->uuid(),
-      'langcode' => $node->language()->getId(),
       'title' => $this->linkTitle($node, $source),
       'link' => ['uri' => 'entity:node/' . $node->id()],
       'weight' => $weight,
       'enabled' => TRUE,
       'menu_autopilot' => ['managed' => TRUE, 'node' => (int) $node->id()],
-    ]);
+    ];
+    $link = MenuLinkContent::create($values);
+    // A translatable link is created in the node's language, so the other
+    // languages can be added on it. A bundle that cannot be translated keeps
+    // the language create() assigns, which is what this did before.
+    if ($link->isTranslatable() && !$node->language()->isLocked()) {
+      $values['langcode'] = $node->language()->getId();
+      $link = MenuLinkContent::create($values);
+    }
     // Translations are written before the first save, so create is one write.
     $this->syncLinkTitles($link, $node, $source);
     $this->saveChild($link, $parent, $node);
@@ -1166,30 +1173,48 @@ final class NavSyncManager implements DestructableInterface {
    *   sorted by node id then language code, and the stale count.
    */
   private function linkTranslationReport(array $owned): array {
-    $ids = array_map('intval', array_keys($owned));
-    $nodes = $ids === [] ? [] : $this->entityTypeManager->getStorage('node')->loadMultiple($ids);
-    $rows = [];
-    $stale = 0;
+    // The stale count is not capped, and the listed rows are sorted before
+    // the cap is applied, so every extra translation is visited. Node
+    // entities are the heavy part: skip links that have none, and drop each
+    // batch before loading the next.
+    $pending = [];
     foreach ($owned as $nid => $link) {
       $link = $link->getUntranslated();
       $default_lang = $link->language()->getId();
-      $node = $nodes[(int) $nid] ?? NULL;
-      $node_languages = $node instanceof NodeInterface
-        ? $node->getUntranslated()->getTranslationLanguages()
-        : [];
+      $extras = [];
       foreach (array_keys($link->getTranslationLanguages()) as $langcode) {
-        if ($langcode === $default_lang) {
-          continue;
+        if ($langcode !== $default_lang) {
+          $extras[] = $langcode;
         }
-        $is_stale = !isset($node_languages[$langcode]);
-        $stale += (int) $is_stale;
-        $rows[] = [
-          'node' => (int) $nid,
-          'langcode' => $langcode,
-          'title' => (string) $link->getTranslation($langcode)->getTitle(),
-          'stale' => $is_stale,
-        ];
       }
+      if ($extras !== []) {
+        $pending[(int) $nid] = [$link, $extras];
+      }
+    }
+
+    $rows = [];
+    $stale = 0;
+    $storage = $this->entityTypeManager->getStorage('node');
+    foreach (array_chunk(array_keys($pending), 50) as $chunk) {
+      $nodes = $storage->loadMultiple($chunk);
+      foreach ($chunk as $nid) {
+        [$link, $extras] = $pending[$nid];
+        $node = $nodes[$nid] ?? NULL;
+        $node_languages = $node instanceof NodeInterface
+          ? $node->getUntranslated()->getTranslationLanguages()
+          : [];
+        foreach ($extras as $langcode) {
+          $is_stale = !isset($node_languages[$langcode]);
+          $stale += (int) $is_stale;
+          $rows[] = [
+            'node' => $nid,
+            'langcode' => $langcode,
+            'title' => (string) $link->getTranslation($langcode)->getTitle(),
+            'stale' => $is_stale,
+          ];
+        }
+      }
+      $storage->resetCache($chunk);
     }
     usort($rows, static function (array $a, array $b): int {
       return [$a['node'], $a['langcode']] <=> [$b['node'], $b['langcode']];
