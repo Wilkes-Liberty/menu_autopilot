@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Automatic child labels now follow each node translation.** When content
+  translation is enabled for menu links, sync writes the child title in every
+  language the node has, and removes a link translation when the node no
+  longer has that language. A link keeps the language it already has. Status
+  lists the translated labels and marks one stale until the next sync removes
+  it.
+  ([#3628728](https://www.drupal.org/project/menu_autopilot/issues/3628728))
+
 ## [1.4.7] - 2026-10-03
 
 ### Changed

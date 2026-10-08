@@ -1154,7 +1154,14 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertSame('term', $row['source_type']);
     $this->assertSame('add', $row['existing_children']);
     $this->assertSame(
-      ['owned' => 2, 'adoptable' => 1, 'extra' => 1, 'disabled' => 1, 'disabled_by_save' => 0],
+      [
+        'owned' => 2,
+        'adoptable' => 1,
+        'extra' => 1,
+        'disabled' => 1,
+        'disabled_by_save' => 0,
+        'stale_translations' => 0,
+      ],
       $row['counts'],
     );
     $this->assertSame(

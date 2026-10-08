@@ -162,7 +162,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     $overwritten = $keeps_weight
       ? 'Title and URI are overwritten on the next sync of its parent. Weight is kept, because the parent keeps the current order.'
       : 'Title, weight and URI are overwritten on the next sync of its parent.';
-    return $overwritten . ' The enabled state is kept: a sync never enables a link an editor disabled. If the link is deleted, the next sync creates it again while its node is published and in the source. To change the label or the order, edit the parent link.';
+    return $overwritten . ' When the link can be translated, each language the node has gets that language\'s title. A link translation in a language the node does not have is removed. The enabled state is kept: a sync never enables a link an editor disabled. If the link is deleted, the next sync creates it again while its node is published and in the source. To change the label or the order, edit the parent link.';
   }
 
   /**

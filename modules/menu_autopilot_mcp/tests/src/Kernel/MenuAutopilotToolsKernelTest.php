@@ -220,7 +220,14 @@ final class MenuAutopilotToolsKernelTest extends KernelTestBase {
     self::assertSame('bundle', $row['source_type']);
     self::assertSame('add', $row['existing_children']);
     self::assertSame(
-      ['owned' => 3, 'adoptable' => 1, 'extra' => 1, 'disabled' => 2, 'disabled_by_save' => 1],
+      [
+        'owned' => 3,
+        'adoptable' => 1,
+        'extra' => 1,
+        'disabled' => 2,
+        'disabled_by_save' => 1,
+        'stale_translations' => 0,
+      ],
       $row['counts'],
     );
     $disabled = array_column($row['disabled_children'], NULL, 'node');
@@ -228,6 +235,8 @@ final class MenuAutopilotToolsKernelTest extends KernelTestBase {
     self::assertFalse($disabled[(int) $nodes['beacon']->id()]['disabled_by_save']);
     self::assertTrue($disabled[(int) $nodes['comet']->id()]['disabled_by_save']);
     self::assertArrayNotHasKey((int) $nodes['atlas']->id(), $disabled);
+    self::assertSame([], $row['translations']);
+    self::assertFalse($row['translations_truncated']);
 
     $json = json_encode($values);
     foreach (['title_pattern', '[node:', self::FIELD_VALUE] as $forbidden) {

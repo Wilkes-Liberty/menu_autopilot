@@ -26,3 +26,10 @@ parameters:
     - "#^Unsafe usage of new static#"
     - identifier: missingType.iterableValue
     - identifier: missingType.generics
+    # PHPStan 2.3, via bleedingEdge, reports hook and form-callback
+    # parameters the body does not read. Those names are the API.
+    # Class methods are reported as Method, so this stays on the
+    # procedural functions.
+    -
+      identifier: function.unusedParameter
+      message: '#^Function _?menu_autopilot_#'
