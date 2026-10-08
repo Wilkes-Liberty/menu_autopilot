@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.8] - 2026-10-07
+
 ### Fixed
 - **Automatic child labels now follow each node translation.** When content
   translation is enabled for menu links, sync writes the child title in every
