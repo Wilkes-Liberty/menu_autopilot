@@ -6,6 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.9] - 2026-10-14
+
+### Fixed
+- **New child links are created in the node's language.** Setting the
+  langcode after `create()` left translation context on the English
+  default. Translatability is probed first, and the link is created once
+  with that language.
+
+### Changed
+- `NavSyncManager::normalizeNodeUris()` reports each rewrite as `from`
+  and `to`. Drush still prints `old → new`. Sync behavior is otherwise
+  unchanged.
+
 ## [1.4.8] - 2026-10-07
 
 ### Fixed
