@@ -5,8 +5,11 @@ services:
   menu_autopilot.source_resolver:
     class: Drupal\menu_autopilot\NavSourceResolver
     arguments: ['@entity_type.manager', '@module_handler']
+  menu_autopilot.status_reporter:
+    class: Drupal\menu_autopilot\NavStatusReporter
+    arguments: ['@entity_type.manager', '@config.factory', '@module_handler']
   menu_autopilot.sync_manager:
     class: Drupal\menu_autopilot\NavSyncManager
-    arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token', '@module_handler', '@current_user', '@logger.channel.menu_autopilot']
+    arguments: ['@entity_type.manager', '@config.factory', '@menu_autopilot.source_resolver', '@token', '@current_user', '@logger.channel.menu_autopilot', '@menu_autopilot.status_reporter']
     tags:
       - { name: needs_destruction }

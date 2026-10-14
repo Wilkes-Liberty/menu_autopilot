@@ -1059,7 +1059,15 @@ final class NavSyncManagerTest extends KernelTestBase {
     $sync = $this->container->get('menu_autopilot.sync_manager');
     $changed = $sync->normalizeNodeUris(['main']);
 
-    $this->assertArrayHasKey((int) $link->id(), $changed);
+    $this->assertSame(
+      [
+        (int) $link->id() => [
+          'from' => 'internal:/node/' . $node->id() . '/latest',
+          'to' => 'entity:node/' . $node->id(),
+        ],
+      ],
+      $changed,
+    );
     $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
     $reloaded = $storage->load($link->id());
     $this->assertSame('entity:node/' . $node->id(), $reloaded->get('link')->first()->getValue()['uri']);
@@ -1112,7 +1120,7 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * The status report counts each kind of child and is bounded.
    *
-   * @covers ::parentStatus
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::parentStatus
    */
   public function testParentStatusCountsChildrenAndIsBounded(): void {
     $parent = $this->createDynamicParent([
@@ -1142,9 +1150,9 @@ final class NavSyncManagerTest extends KernelTestBase {
       'link' => ['uri' => 'route:<nolink>'],
     ])->save();
 
-    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
-    $sync = $this->container->get('menu_autopilot.sync_manager');
-    $report = $sync->parentStatus();
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
+    $report = $reporter->parentStatus();
 
     $this->assertSame(['main'], $report['managed_menus']);
     $this->assertSame(2, $report['parents_total']);
@@ -1176,7 +1184,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertStringNotContainsString('title_pattern', $json);
     $this->assertStringNotContainsString('[node:', $json);
 
-    $bounded = $sync->parentStatus(1, 0);
+    $bounded = $reporter->parentStatus(1, 0);
     $this->assertSame(2, $bounded['parents_total']);
     $this->assertTrue($bounded['parents_truncated']);
     $this->assertCount(1, $bounded['parents']);

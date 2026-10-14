@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Drupal\menu_autopilot_mcp\Plugin\tool\Tool;
 
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\tool\Attribute\Tool;
 use Drupal\tool\Tool\ToolOperation;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Reports the dynamic parents and what sits under each one.
@@ -31,10 +33,24 @@ final class StatusTool extends MenuAutopilotToolBase {
   private const MAX_LISTED = 25;
 
   /**
+   * Read-only parent status report.
+   */
+  protected NavStatusReporter $statusReporter;
+
+  /**
+   * {@inheritdoc}
+   */
+  public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
+    $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
+    $instance->statusReporter = $container->get('menu_autopilot.status_reporter');
+    return $instance;
+  }
+
+  /**
    * {@inheritdoc}
    */
   protected function run(array $values): array {
-    return $this->syncManager->parentStatus(self::MAX_PARENTS, self::MAX_LISTED);
+    return $this->statusReporter->parentStatus(self::MAX_PARENTS, self::MAX_LISTED);
   }
 
 }

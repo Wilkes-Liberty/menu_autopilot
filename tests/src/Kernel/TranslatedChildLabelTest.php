@@ -83,7 +83,7 @@ final class TranslatedChildLabelTest extends KernelTestBase {
    * not replace the English title with the French one.
    *
    * @covers ::syncNode
-   * @covers ::parentStatus
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::parentStatus
    */
   public function testSyncWritesAndRemovesLinkTranslations(): void {
     $parent = $this->createParent();
@@ -125,9 +125,9 @@ final class TranslatedChildLabelTest extends KernelTestBase {
     $link->addTranslation('es', ['title' => 'Viejo']);
     $link->save();
 
-    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
-    $sync = $this->container->get('menu_autopilot.sync_manager');
-    $row = $this->statusRow($sync->parentStatus(), $parent);
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
+    $row = $this->statusRow($reporter->parentStatus(), $parent);
     $this->assertSame(1, $row['counts']['stale_translations']);
     $this->assertSame([
       [
@@ -143,7 +143,7 @@ final class TranslatedChildLabelTest extends KernelTestBase {
         'stale' => FALSE,
       ],
     ], $row['translations']);
-    $cut = $this->statusRow($sync->parentStatus(50, 0), $parent);
+    $cut = $this->statusRow($reporter->parentStatus(50, 0), $parent);
     $this->assertSame([], $cut['translations']);
     $this->assertTrue($cut['translations_truncated']);
     $this->assertSame(1, $cut['counts']['stale_translations']);
@@ -153,7 +153,7 @@ final class TranslatedChildLabelTest extends KernelTestBase {
     $link = $this->reloadLink((int) $link->id());
     $this->assertFalse($link->hasTranslation('es'));
     $this->assertTrue($link->hasTranslation('fr'));
-    $this->assertSame(0, $this->statusRow($sync->parentStatus(), $parent)['counts']['stale_translations']);
+    $this->assertSame(0, $this->statusRow($reporter->parentStatus(), $parent)['counts']['stale_translations']);
 
     $node = $this->reloadNode((int) $node->id());
     $node->removeTranslation('fr');
@@ -161,7 +161,7 @@ final class TranslatedChildLabelTest extends KernelTestBase {
     $link = $this->reloadLink((int) $link->id());
     $this->assertFalse($link->hasTranslation('fr'));
     $this->assertSame('Helios 2 / en', $link->getTitle());
-    $this->assertSame([], $this->statusRow($sync->parentStatus(), $parent)['translations']);
+    $this->assertSame([], $this->statusRow($reporter->parentStatus(), $parent)['translations']);
   }
 
   /**

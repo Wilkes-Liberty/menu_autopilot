@@ -83,8 +83,11 @@ final class MenuAutopilotCommands extends DrushCommands {
       $this->logger()->success(dt('Menu Autopilot: all menu links already use canonical node URIs.'));
       return;
     }
-    foreach ($changed as $id => $description) {
-      $this->logger()->notice(dt('Link @id: @change', ['@id' => $id, '@change' => $description]));
+    foreach ($changed as $id => $rewrite) {
+      $this->logger()->notice(dt('Link @id: @change', [
+        '@id' => $id,
+        '@change' => $rewrite['from'] . ' → ' . $rewrite['to'],
+      ]));
     }
     $this->logger()->success(dt('Menu Autopilot: normalized @count menu link URI(s).', [
       '@count' => count($changed),
