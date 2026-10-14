@@ -62,11 +62,6 @@ final class NavSyncManager implements DestructableInterface {
    */
   private array $enableAttempts = [];
 
-  /**
-   * Menu link content storage.
-   */
-  private readonly EntityStorageInterface $menuLinkStorage;
-
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
     private readonly ConfigFactoryInterface $configFactory,
@@ -75,10 +70,7 @@ final class NavSyncManager implements DestructableInterface {
     private readonly AccountProxyInterface $currentUser,
     private readonly LoggerInterface $logger,
     private readonly NavStatusReporter $statusReporter,
-  ) {
-    $this->menuLinkStorage = $entityTypeManager
-      ->getStorage('menu_link_content');
-  }
+  ) {}
 
   /**
    * TRUE while the manager is writing its own links (hooks should stand down).
@@ -200,7 +192,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing || !$this->isManaged($link) || !$link->id()) {
       return;
     }
-    $stored = $this->menuLinkStorage->loadUnchanged((int) $link->id());
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
     if (!$stored instanceof MenuLinkContentInterface) {
       return;
     }
@@ -221,7 +213,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing || !$link->id() || !$this->isDisabledBySave($link)) {
       return;
     }
-    $stored = $this->menuLinkStorage->loadUnchanged((int) $link->id());
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
     if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
       $this->setDisabledBySave($link, FALSE);
     }
@@ -303,7 +295,7 @@ final class NavSyncManager implements DestructableInterface {
     }
     $this->syncing = TRUE;
     try {
-      foreach ($this->menuLinkStorage->loadMultiple($ids) as $link) {
+      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
         if ($link instanceof MenuLinkContentInterface && $this->isManaged($link)) {
           $link->delete();
         }
@@ -485,7 +477,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($menus === []) {
       return [];
     }
-    $ids = $this->menuLinkStorage->getQuery()
+    $ids = $this->menuLinkStorage()->getQuery()
       ->condition('menu_name', $menus, 'IN')
       ->accessCheck(FALSE)
       ->execute();
@@ -494,7 +486,7 @@ final class NavSyncManager implements DestructableInterface {
     $was_syncing = $this->syncing;
     $this->syncing = TRUE;
     try {
-      foreach ($this->menuLinkStorage->loadMultiple($ids) as $link) {
+      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
         if (!$link instanceof MenuLinkContentInterface) {
           continue;
         }
@@ -558,12 +550,12 @@ final class NavSyncManager implements DestructableInterface {
     foreach ($this->statusReporter->findDynamicParents() as $other) {
       $protected['menu_link_content:' . $other->uuid()] = TRUE;
     }
-    $ids = $this->menuLinkStorage->getQuery()
+    $ids = $this->menuLinkStorage()->getQuery()
       ->condition('menu_name', $parent->getMenuName())
       ->accessCheck(FALSE)
       ->execute();
     $moved = [];
-    foreach ($this->menuLinkStorage->loadMultiple($ids) as $link) {
+    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
       if (!$link instanceof MenuLinkContentInterface || $this->isManaged($link)) {
         continue;
       }
@@ -664,11 +656,12 @@ final class NavSyncManager implements DestructableInterface {
     // A translatable link is created in the node's language, so the other
     // languages can be added on it. A bundle that cannot be translated keeps
     // the language create() assigns, which is what this did before.
-    $link = $this->menuLinkStorage->create($values);
-    assert($link instanceof MenuLinkContentInterface);
-    if ($link->isTranslatable() && !$node->language()->isLocked()) {
-      $link->set('langcode', $node->language()->getId());
+    if ($this->menuLinkStorage()->create([])->isTranslatable()
+      && !$node->language()->isLocked()) {
+      $values['langcode'] = $node->language()->getId();
     }
+    /** @var \Drupal\menu_link_content\MenuLinkContentInterface $link */
+    $link = $this->menuLinkStorage()->create($values);
     // Translations are written before the first save, so create is one write.
     $this->syncLinkTitles($link, $node, $source);
     $this->saveChild($link, $parent, $node);
@@ -701,7 +694,7 @@ final class NavSyncManager implements DestructableInterface {
    * nothing, and no menu shows the link.
    */
   private function flagIfSaveDisabled(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, bool $created): void {
-    $stored = $this->menuLinkStorage->loadUnchanged((int) $link->id());
+    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
     if (!$stored instanceof MenuLinkContentInterface || $stored->isEnabled()) {
       return;
     }
@@ -755,7 +748,7 @@ final class NavSyncManager implements DestructableInterface {
 
     $link->set('enabled', TRUE);
     $link->save();
-    $stored = $this->menuLinkStorage->loadUnchanged($id);
+    $stored = $this->menuLinkStorage()->loadUnchanged($id);
     if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
       $this->setDisabledBySave($link, FALSE);
       $this->saveChild($link, $parent, $node);
@@ -989,6 +982,16 @@ final class NavSyncManager implements DestructableInterface {
     finally {
       $this->syncing = FALSE;
     }
+  }
+
+  /**
+   * The menu link content storage handler.
+   *
+   * @return \Drupal\Core\Entity\EntityStorageInterface
+   *   The storage handler.
+   */
+  private function menuLinkStorage(): EntityStorageInterface {
+    return $this->entityTypeManager->getStorage('menu_link_content');
   }
 
 }

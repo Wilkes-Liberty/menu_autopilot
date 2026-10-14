@@ -101,8 +101,7 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
     foreach ($changed as $id => $rewrite) {
       // The manager always writes entity:node/<nid>. Keep the same check the
       // arrow parser used, so a malformed rewrite is reported as not applied.
-      $to = $rewrite['to'] ?? NULL;
-      $to = is_string($to) && preg_match('#^entity:node/\d+$#D', $to) ? $to : NULL;
+      $to = preg_match('#^entity:node/\d+$#D', $rewrite['to']) ? $rewrite['to'] : NULL;
       // The manager reports what it saved. Read the live link back: another
       // module can turn the save into a pending revision.
       $stored = $storage->loadUnchanged($id);
