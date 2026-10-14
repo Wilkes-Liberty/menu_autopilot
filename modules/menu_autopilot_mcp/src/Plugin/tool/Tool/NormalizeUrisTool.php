@@ -98,8 +98,10 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
     $storage = $this->entityTypeManager->getStorage('menu_link_content');
     $changes = [];
     $applied_total = 0;
-    foreach ($changed as $id => $description) {
-      $to = $this->canonicalTarget((string) $description);
+    foreach ($changed as $id => $rewrite) {
+      // The manager always writes entity:node/<nid>. Keep the same check the
+      // arrow parser used, so a malformed rewrite is reported as not applied.
+      $to = preg_match('#^entity:node/\d+$#D', $rewrite['to']) ? $rewrite['to'] : NULL;
       // The manager reports what it saved. Read the live link back: another
       // module can turn the save into a pending revision.
       $stored = $storage->loadUnchanged($id);
@@ -152,22 +154,6 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
       $menus[$name] = $name;
     }
     return array_values($menus);
-  }
-
-  /**
-   * The canonical URI from a change description, if it is well formed.
-   *
-   * The manager describes a change as "old → new". The old URI is whatever
-   * an editor typed and can carry a query string, so it is not returned. The
-   * new one is always `entity:node/<nid>`.
-   */
-  private function canonicalTarget(string $description): ?string {
-    $position = strrpos($description, ' → ');
-    if ($position === FALSE) {
-      return NULL;
-    }
-    $to = substr($description, $position + strlen(' → '));
-    return preg_match('#^entity:node/\d+$#D', $to) ? $to : NULL;
   }
 
 }

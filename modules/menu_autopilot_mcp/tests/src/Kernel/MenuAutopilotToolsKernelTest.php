@@ -255,7 +255,7 @@ final class MenuAutopilotToolsKernelTest extends KernelTestBase {
       $this->managedChild($first, $node)->set('enabled', FALSE)->save();
     });
 
-    $report = $this->container->get('menu_autopilot.sync_manager')->parentStatus(1, 0);
+    $report = $this->container->get('menu_autopilot.status_reporter')->parentStatus(1, 0);
     self::assertSame(2, $report['parents_total']);
     self::assertTrue($report['parents_truncated']);
     self::assertCount(1, $report['parents']);
