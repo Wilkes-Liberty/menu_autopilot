@@ -656,7 +656,9 @@ final class NavSyncManager implements DestructableInterface {
     // A translatable link is created in the node's language, so the other
     // languages can be added on it. A bundle that cannot be translated keeps
     // the language create() assigns, which is what this did before.
-    if ($this->menuLinkStorage()->create([])->isTranslatable()
+    $probe = $this->menuLinkStorage()->create([]);
+    if ($probe instanceof MenuLinkContentInterface
+      && $probe->isTranslatable()
       && !$node->language()->isLocked()) {
       $values['langcode'] = $node->language()->getId();
     }
