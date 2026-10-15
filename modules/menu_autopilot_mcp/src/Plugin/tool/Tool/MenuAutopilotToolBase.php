@@ -11,7 +11,6 @@ use Drupal\mcp_sentinel\McpPolicyProfileInterface;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpEntityToolTrait;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpGovernedToolBase;
 use Drupal\mcp_sentinel\Service\McpExfiltrationGuard;
-use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\tool\ExecutableResult;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -43,11 +42,6 @@ abstract class MenuAutopilotToolBase extends McpGovernedToolBase {
   protected ?McpExfiltrationGuard $exfiltrationGuard = NULL;
 
   /**
-   * The sync manager every tool reads from.
-   */
-  protected NavSyncManager $syncManager;
-
-  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
@@ -55,7 +49,6 @@ abstract class MenuAutopilotToolBase extends McpGovernedToolBase {
     $instance->exfiltrationGuard = $container->has('mcp_sentinel.exfiltration_guard')
       ? $container->get('mcp_sentinel.exfiltration_guard')
       : NULL;
-    $instance->syncManager = $container->get('menu_autopilot.sync_manager');
     return $instance;
   }
 

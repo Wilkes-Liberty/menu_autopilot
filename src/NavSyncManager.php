@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\menu_autopilot;
 
-use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\DestructableInterface;
 use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -64,7 +63,6 @@ final class NavSyncManager implements DestructableInterface {
 
   public function __construct(
     private readonly EntityTypeManagerInterface $entityTypeManager,
-    private readonly ConfigFactoryInterface $configFactory,
     private readonly NavSourceResolver $resolver,
     private readonly Token $token,
     private readonly AccountProxyInterface $currentUser,
@@ -150,7 +148,7 @@ final class NavSyncManager implements DestructableInterface {
   /**
    * Reconcile the managed children under a single dynamic parent (idempotent).
    */
-  public function syncParent(MenuLinkContentInterface $parent): void {
+  private function syncParent(MenuLinkContentInterface $parent): void {
     if ($this->syncing) {
       return;
     }
@@ -524,7 +522,7 @@ final class NavSyncManager implements DestructableInterface {
    *   The configured menu machine names.
    */
   public function managedMenus(): array {
-    return $this->configFactory->get('menu_autopilot.settings')->get('managed_menus') ?? ['main'];
+    return $this->statusReporter->managedMenus();
   }
 
   /**
@@ -937,7 +935,7 @@ final class NavSyncManager implements DestructableInterface {
    *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
    */
   public function existingChildrenPolicy(array $source): string {
-    return _menu_autopilot_existing_children_policy($source['existing_children'] ?? 'adopt');
+    return $this->statusReporter->existingChildrenPolicy($source);
   }
 
   /**
@@ -950,22 +948,21 @@ final class NavSyncManager implements DestructableInterface {
    *   The stored source map, or an empty array.
    */
   public function getSource(MenuLinkContentInterface $link): array {
-    $source = $this->getData($link)['source'] ?? NULL;
-    return is_array($source) ? $source : [];
+    return $this->statusReporter->getSource($link);
   }
 
   /**
    * Whether a link is a managed (auto-generated) child.
    */
   private function isManaged(MenuLinkContentInterface $link): bool {
-    return !empty($this->getData($link)['managed']);
+    return $this->statusReporter->isManaged($link);
   }
 
   /**
    * Read the `menu_autopilot` map field off a link.
    */
   private function getData(MenuLinkContentInterface $link): array {
-    return _menu_autopilot_link_data($link);
+    return $this->statusReporter->getData($link);
   }
 
   /**
@@ -993,7 +990,7 @@ final class NavSyncManager implements DestructableInterface {
    *   The storage handler.
    */
   private function menuLinkStorage(): EntityStorageInterface {
-    return $this->entityTypeManager->getStorage('menu_link_content');
+    return $this->statusReporter->menuLinkStorage();
   }
 
 }

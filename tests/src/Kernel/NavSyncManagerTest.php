@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\menu_autopilot\Kernel;
 
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\menu_autopilot\NavStatusReporter;
+use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
@@ -1189,6 +1192,69 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertTrue($bounded['parents_truncated']);
     $this->assertCount(1, $bounded['parents']);
     $this->assertSame([], $bounded['parents'][0]['disabled_children']);
+  }
+
+  /**
+   * Read wrappers live on the reporter; the manager delegates the same values.
+   *
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::managedMenus
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::getSource
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::existingChildrenPolicy
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::isManaged
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::getData
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::menuLinkStorage
+   * @covers ::managedMenus
+   * @covers ::getSource
+   * @covers ::existingChildrenPolicy
+   * @covers ::syncParent
+   * @covers ::preservesEditorOrder
+   * @covers ::disabledManagedChildren
+   */
+  public function testReporterOwnsReadWrappersAndManagerDelegates(): void {
+    $parent = $this->createDynamicParent(['existing_children' => 'add']);
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
+    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
+    $sync = $this->container->get('menu_autopilot.sync_manager');
+
+    $this->assertSame(['main'], $reporter->managedMenus());
+    $this->assertSame($reporter->managedMenus(), $sync->managedMenus());
+
+    $source = $reporter->getSource($parent);
+    $this->assertSame('term', $source['type']);
+    $this->assertSame('add', $source['existing_children']);
+    $this->assertSame($source, $sync->getSource($parent));
+    $this->assertSame('add', $reporter->existingChildrenPolicy($source));
+    $this->assertSame('add', $sync->existingChildrenPolicy($source));
+    $this->assertSame('adopt', $reporter->existingChildrenPolicy(['existing_children' => 'unknown']));
+
+    $this->assertFalse($reporter->isManaged($parent));
+    $this->assertTrue($reporter->isManaged($child));
+    $data = $reporter->getData($child);
+    $this->assertTrue($data['managed']);
+    $this->assertGreaterThan(0, (int) ($data['node'] ?? 0));
+
+    $this->assertSame('menu_link_content', $reporter->menuLinkStorage()->getEntityTypeId());
+
+    $this->assertFalse($sync->preservesEditorOrder($source));
+    $this->assertTrue($sync->preservesEditorOrder(['type' => 'bundle', 'sort' => 'preserve']));
+    $this->assertSame([], $sync->disabledManagedChildren());
+
+    $types = [];
+    foreach ((new \ReflectionMethod(NavSyncManager::class, '__construct'))->getParameters() as $parameter) {
+      $type = $parameter->getType();
+      if ($type instanceof \ReflectionNamedType) {
+        $types[] = $type->getName();
+      }
+    }
+    $this->assertNotContains(ConfigFactoryInterface::class, $types);
+    $this->assertContains(NavStatusReporter::class, $types);
+    $this->assertTrue((new \ReflectionMethod(NavSyncManager::class, 'syncParent'))->isPrivate());
   }
 
   /**
