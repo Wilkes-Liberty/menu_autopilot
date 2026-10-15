@@ -8,6 +8,7 @@ use Drupal\Component\Uuid\Uuid;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\tool\Attribute\Tool;
 use Drupal\tool\Tool\ToolOperation;
@@ -48,12 +49,18 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
   protected ModuleHandlerInterface $moduleHandler;
 
   /**
+   * Sync manager.
+   */
+  protected NavSyncManager $syncManager;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->entityRepository = $container->get('entity.repository');
     $instance->moduleHandler = $container->get('module_handler');
+    $instance->syncManager = $container->get('menu_autopilot.sync_manager');
     return $instance;
   }
 

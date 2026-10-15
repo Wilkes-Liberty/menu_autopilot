@@ -6,6 +6,7 @@ namespace Drupal\menu_autopilot_mcp\Plugin\tool\Tool;
 
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\tool\Attribute\Tool;
 use Drupal\tool\Tool\ToolOperation;
@@ -52,11 +53,17 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
   protected EntityTypeManagerInterface $entityTypeManager;
 
   /**
+   * Sync manager.
+   */
+  protected NavSyncManager $syncManager;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->entityTypeManager = $container->get('entity_type.manager');
+    $instance->syncManager = $container->get('menu_autopilot.sync_manager');
     return $instance;
   }
 

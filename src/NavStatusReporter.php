@@ -379,14 +379,20 @@ final class NavStatusReporter {
    * @return string[]
    *   The configured menu machine names.
    */
-  private function managedMenus(): array {
+  public function managedMenus(): array {
     return $this->configFactory->get('menu_autopilot.settings')->get('managed_menus') ?? ['main'];
   }
 
   /**
    * How unmanaged children under a parent are treated during sync.
+   *
+   * @param array $source
+   *   The parent source descriptor.
+   *
+   * @return string
+   *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
    */
-  private function existingChildrenPolicy(array $source): string {
+  public function existingChildrenPolicy(array $source): string {
     $policy = $source['existing_children'] ?? 'adopt';
     return _menu_autopilot_existing_children_policy($policy);
   }
@@ -394,25 +400,40 @@ final class NavStatusReporter {
   /**
    * The parent link's source descriptor (empty when it is not dynamic).
    *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
    * @return array
    *   The stored source map, or an empty array.
    */
-  private function getSource(MenuLinkContentInterface $link): array {
+  public function getSource(MenuLinkContentInterface $link): array {
     $source = $this->getData($link)['source'] ?? NULL;
     return is_array($source) ? $source : [];
   }
 
   /**
    * Whether a link is a managed (auto-generated) child.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
+   * @return bool
+   *   TRUE when the link carries the managed flag.
    */
-  private function isManaged(MenuLinkContentInterface $link): bool {
+  public function isManaged(MenuLinkContentInterface $link): bool {
     return !empty($this->getData($link)['managed']);
   }
 
   /**
    * Read the `menu_autopilot` map field off a link.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
+   * @return array
+   *   The stored map, or an empty array.
    */
-  private function getData(MenuLinkContentInterface $link): array {
+  public function getData(MenuLinkContentInterface $link): array {
     return _menu_autopilot_link_data($link);
   }
 
@@ -422,7 +443,7 @@ final class NavStatusReporter {
    * @return \Drupal\Core\Entity\EntityStorageInterface
    *   The storage handler.
    */
-  private function menuLinkStorage(): EntityStorageInterface {
+  public function menuLinkStorage(): EntityStorageInterface {
     return $this->entityTypeManager->getStorage('menu_link_content');
   }
 

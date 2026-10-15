@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **1.4.9 changed the NavSyncManager constructor** and moved
+  `parentStatus()` to `NavStatusReporter`. Sites that only ran
+  `drush updb` after 1.4.9 can TypeError: the container still
+  constructs the manager without the reporter. This release also
+  drops `@config.factory` from the manager (those reads live on
+  the reporter). Run `drush updb`, or rebuild caches, after
+  updating the code. An empty post-update
+  (`menu_autopilot_post_update_status_reporter`) rebuilds the
+  container.
+
 ## [1.4.9] - 2026-10-14
 
 ### Fixed

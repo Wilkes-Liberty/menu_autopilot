@@ -11,6 +11,7 @@ use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpGovernedToolBase;
+use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
@@ -164,6 +165,21 @@ final class MenuAutopilotToolsKernelTest extends KernelTestBase {
       $tool->execute();
       self::assertFalse($tool->getResultStatus(), $id);
       self::assertEmpty($tool->getResult()->getContextValues(), $id);
+    }
+  }
+
+  /**
+   * Only tools that call the sync manager inject it; status does not.
+   */
+  public function testStatusToolDoesNotInjectTheSyncManager(): void {
+    $status = new \ReflectionObject($this->tool('menu_autopilot_status'));
+    self::assertFalse($status->hasProperty('syncManager'));
+
+    foreach (['menu_autopilot_link_info', 'menu_autopilot_normalize_uris'] as $id) {
+      $tool = $this->tool($id);
+      $property = (new \ReflectionObject($tool))->getProperty('syncManager');
+      $property->setAccessible(TRUE);
+      self::assertInstanceOf(NavSyncManager::class, $property->getValue($tool), $id);
     }
   }
 
