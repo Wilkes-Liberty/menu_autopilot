@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.10] - 2026-10-15
+
 ### Changed
 - **1.4.9 changed the NavSyncManager constructor** and moved
   `parentStatus()` to `NavStatusReporter`. Sites that only ran
