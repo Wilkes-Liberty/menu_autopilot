@@ -1086,13 +1086,15 @@ final class NavSyncManagerTest extends KernelTestBase {
    * every menu) must not fall back to main, and reconcile must not create
    * or touch children.
    *
-   * @covers ::managedMenus
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::managedMenus
    * @covers ::reconcile
    */
   public function testEmptyManagedMenusMeansNoMenus(): void {
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
     /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
     $sync = $this->container->get('menu_autopilot.sync_manager');
-    $this->assertSame(['main'], $sync->managedMenus(), 'A missing value uses the install default.');
+    $this->assertSame(['main'], $reporter->managedMenus(), 'A missing value uses the install default.');
 
     $parent = $this->createDynamicParent();
     $this->createSolution('Governed AI', TRUE);
@@ -1103,7 +1105,7 @@ final class NavSyncManagerTest extends KernelTestBase {
     $changed = $child->getChangedTime();
 
     $this->config('menu_autopilot.settings')->set('managed_menus', [])->save();
-    $this->assertSame([], $sync->managedMenus());
+    $this->assertSame([], $reporter->managedMenus());
 
     $sync->reconcile();
 
@@ -1195,7 +1197,7 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
-   * Read wrappers live on the reporter; the manager delegates the same values.
+   * The reporter reads menus, sources, order and disabled children.
    *
    * @covers \Drupal\menu_autopilot\NavStatusReporter::managedMenus
    * @covers \Drupal\menu_autopilot\NavStatusReporter::getSource
@@ -1203,14 +1205,11 @@ final class NavSyncManagerTest extends KernelTestBase {
    * @covers \Drupal\menu_autopilot\NavStatusReporter::isManaged
    * @covers \Drupal\menu_autopilot\NavStatusReporter::getData
    * @covers \Drupal\menu_autopilot\NavStatusReporter::menuLinkStorage
-   * @covers ::managedMenus
-   * @covers ::getSource
-   * @covers ::existingChildrenPolicy
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::preservesEditorOrder
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::disabledManagedChildren
    * @covers ::syncParent
-   * @covers ::preservesEditorOrder
-   * @covers ::disabledManagedChildren
    */
-  public function testReporterOwnsReadWrappersAndManagerDelegates(): void {
+  public function testReporterReadsMenusSourcesOrderAndDisabledChildren(): void {
     $parent = $this->createDynamicParent(['existing_children' => 'add']);
     $this->createSolution('Atlas', TRUE);
     $children = $this->childrenOf($parent);
@@ -1219,18 +1218,13 @@ final class NavSyncManagerTest extends KernelTestBase {
 
     /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
     $reporter = $this->container->get('menu_autopilot.status_reporter');
-    /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
-    $sync = $this->container->get('menu_autopilot.sync_manager');
 
     $this->assertSame(['main'], $reporter->managedMenus());
-    $this->assertSame($reporter->managedMenus(), $sync->managedMenus());
 
     $source = $reporter->getSource($parent);
     $this->assertSame('term', $source['type']);
     $this->assertSame('add', $source['existing_children']);
-    $this->assertSame($source, $sync->getSource($parent));
     $this->assertSame('add', $reporter->existingChildrenPolicy($source));
-    $this->assertSame('add', $sync->existingChildrenPolicy($source));
     $this->assertSame('adopt', $reporter->existingChildrenPolicy(['existing_children' => 'unknown']));
 
     $this->assertFalse($reporter->isManaged($parent));
@@ -1241,9 +1235,28 @@ final class NavSyncManagerTest extends KernelTestBase {
 
     $this->assertSame('menu_link_content', $reporter->menuLinkStorage()->getEntityTypeId());
 
-    $this->assertFalse($sync->preservesEditorOrder($source));
-    $this->assertTrue($sync->preservesEditorOrder(['type' => 'bundle', 'sort' => 'preserve']));
-    $this->assertSame([], $sync->disabledManagedChildren());
+    $this->assertFalse($reporter->preservesEditorOrder($source));
+    $this->assertTrue($reporter->preservesEditorOrder(['type' => 'bundle', 'sort' => 'preserve']));
+    $this->assertTrue($reporter->preservesEditorOrder(['type' => 'term', 'sort' => 'preserve']));
+    $this->assertFalse($reporter->preservesEditorOrder(['type' => 'manual', 'sort' => 'preserve']));
+    $this->assertFalse($reporter->preservesEditorOrder(['type' => 'bundle', 'sort' => 'title_asc']));
+    $this->assertFalse($reporter->preservesEditorOrder([]));
+
+    $child->set('enabled', FALSE)->save();
+    $rows = $reporter->disabledManagedChildren();
+    $this->assertCount(1, $rows);
+    $this->assertSame((int) $parent->id(), $rows[0]['parent_id']);
+    $this->assertSame((int) $child->id(), $rows[0]['link_id']);
+    $this->assertSame((int) ($data['node'] ?? 0), $rows[0]['node']);
+    $this->assertFalse($rows[0]['disabled_by_save']);
+    $this->assertSame($rows, $reporter->disabledManagedChildren($parent));
+    $other = MenuLinkContent::create([
+      'title' => 'Other',
+      'menu_name' => 'main',
+      'link' => ['uri' => 'route:<nolink>'],
+    ]);
+    $other->save();
+    $this->assertSame([], $reporter->disabledManagedChildren($other));
 
     $types = [];
     foreach ((new \ReflectionMethod(NavSyncManager::class, '__construct'))->getParameters() as $parameter) {

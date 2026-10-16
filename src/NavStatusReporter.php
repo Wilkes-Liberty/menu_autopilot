@@ -112,6 +112,45 @@ final class NavStatusReporter {
   }
 
   /**
+   * Managed children that are disabled, so an operator can find them.
+   *
+   * A sync never enables a link an editor disabled, and it cannot always
+   * enable one that another module's save hook disabled. Both are easy to
+   * miss: the node is published and its link exists, but no menu shows it.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface|null $parent
+   *   Limit the report to one parent, or NULL for every dynamic parent in the
+   *   managed menus.
+   *
+   * @return array<int, array{parent_id: int, parent_title: string, link_id: int, title: string, node: int, disabled_by_save: bool}>
+   *   One row per disabled managed child. `disabled_by_save` is TRUE when a
+   *   sync save left the link disabled and no sync has enabled it since.
+   */
+  public function disabledManagedChildren(?MenuLinkContentInterface $parent = NULL): array {
+    $rows = [];
+    $parents = $parent
+      ? [$parent]
+      : $this->findDynamicParents();
+    foreach ($parents as $candidate) {
+      foreach ($this->loadChildren($candidate) as $link) {
+        $data = $this->getData($link);
+        if (empty($data['managed']) || $link->isEnabled()) {
+          continue;
+        }
+        $rows[] = [
+          'parent_id' => (int) $candidate->id(),
+          'parent_title' => (string) $candidate->getTitle(),
+          'link_id' => (int) $link->id(),
+          'title' => (string) $link->getTitle(),
+          'node' => (int) ($data['node'] ?? 0),
+          'disabled_by_save' => !empty($data['disabled_by_save']),
+        ];
+      }
+    }
+    return $rows;
+  }
+
+  /**
    * All dynamic parent links across the managed menus.
    *
    * Uses the queryable `menu_autopilot_dynamic` marker so this does not
@@ -395,6 +434,22 @@ final class NavStatusReporter {
   public function existingChildrenPolicy(array $source): string {
     $policy = $source['existing_children'] ?? 'adopt';
     return _menu_autopilot_existing_children_policy($policy);
+  }
+
+  /**
+   * TRUE when the parent keeps editor-set child weights (drag order).
+   *
+   * Manual sources always follow the hand-picked node list, even if a leftover
+   * or site-default `preserve` value is stored on the descriptor.
+   *
+   * @param array $source
+   *   The parent source descriptor.
+   *
+   * @return bool
+   *   TRUE when child weights are left alone.
+   */
+  public function preservesEditorOrder(array $source): bool {
+    return ($source['type'] ?? '') !== 'manual' && ($source['sort'] ?? '') === 'preserve';
   }
 
   /**

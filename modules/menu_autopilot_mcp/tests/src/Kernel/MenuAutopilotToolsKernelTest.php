@@ -11,6 +11,7 @@ use Drupal\Tests\user\Traits\UserCreationTrait;
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\mcp_sentinel\Plugin\tool\Tool\McpGovernedToolBase;
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -169,18 +170,25 @@ final class MenuAutopilotToolsKernelTest extends KernelTestBase {
   }
 
   /**
-   * Only tools that call the sync manager inject it; status does not.
+   * Only the write tool injects the sync manager. Reads use the reporter.
    */
   public function testStatusToolDoesNotInjectTheSyncManager(): void {
-    $status = new \ReflectionObject($this->tool('menu_autopilot_status'));
-    self::assertFalse($status->hasProperty('syncManager'));
-
-    foreach (['menu_autopilot_link_info', 'menu_autopilot_normalize_uris'] as $id) {
+    foreach (['menu_autopilot_status', 'menu_autopilot_link_info'] as $id) {
       $tool = $this->tool($id);
-      $property = (new \ReflectionObject($tool))->getProperty('syncManager');
+      $reflection = new \ReflectionObject($tool);
+      self::assertFalse($reflection->hasProperty('syncManager'), $id);
+      $property = $reflection->getProperty('statusReporter');
       $property->setAccessible(TRUE);
-      self::assertInstanceOf(NavSyncManager::class, $property->getValue($tool), $id);
+      self::assertInstanceOf(NavStatusReporter::class, $property->getValue($tool), $id);
     }
+
+    $normalize = $this->tool('menu_autopilot_normalize_uris');
+    $sync = (new \ReflectionObject($normalize))->getProperty('syncManager');
+    $sync->setAccessible(TRUE);
+    self::assertInstanceOf(NavSyncManager::class, $sync->getValue($normalize));
+    $reporter = (new \ReflectionObject($normalize))->getProperty('statusReporter');
+    $reporter->setAccessible(TRUE);
+    self::assertInstanceOf(NavStatusReporter::class, $reporter->getValue($normalize));
   }
 
   /**

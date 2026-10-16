@@ -6,6 +6,7 @@ namespace Drupal\menu_autopilot_mcp\Plugin\tool\Tool;
 
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\tool\Attribute\Tool;
@@ -58,12 +59,18 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
   protected NavSyncManager $syncManager;
 
   /**
+   * Status reporter.
+   */
+  protected NavStatusReporter $statusReporter;
+
+  /**
    * {@inheritdoc}
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->entityTypeManager = $container->get('entity_type.manager');
     $instance->syncManager = $container->get('menu_autopilot.sync_manager');
+    $instance->statusReporter = $container->get('menu_autopilot.status_reporter');
     return $instance;
   }
 
@@ -152,7 +159,7 @@ final class NormalizeUrisTool extends MenuAutopilotToolBase {
     if (!is_array($value) || $value === [] || count($value) > self::MAX_MENUS) {
       throw new \InvalidArgumentException('Invalid menu list.');
     }
-    $managed = $this->syncManager->managedMenus();
+    $managed = $this->statusReporter->managedMenus();
     $menus = [];
     foreach ($value as $name) {
       if (!is_string($name) || !preg_match('/^[a-z0-9_-]{1,32}$/D', $name) || !in_array($name, $managed, TRUE)) {
