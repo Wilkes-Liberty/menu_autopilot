@@ -8,6 +8,7 @@ use Drupal\Core\Form\FormState;
 use Drupal\Core\Logger\RfcLoggerTrait;
 use Drupal\Core\Logger\RfcLogLevel;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_autopilot\NavSyncManager;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -437,7 +438,7 @@ final class DisabledBySaveChildTest extends KernelTestBase implements LoggerInte
   /**
    * Disabled managed children are reported, with the reason.
    *
-   * @covers ::disabledManagedChildren
+   * @covers \Drupal\menu_autopilot\NavStatusReporter::disabledManagedChildren
    */
   public function testDisabledManagedChildrenAreReported(): void {
     $parent = $this->createDynamicParent();
@@ -449,7 +450,7 @@ final class DisabledBySaveChildTest extends KernelTestBase implements LoggerInte
     $this->actAs($this->restricted);
     $by_hook = $this->createPage('Dune');
 
-    $rows = $this->syncManager()->disabledManagedChildren();
+    $rows = $this->statusReporter()->disabledManagedChildren();
     $this->assertCount(2, $rows, 'The enabled child is not listed.');
     $by_node = array_column($rows, NULL, 'node');
     $this->assertTrue($by_node[(int) $by_hook->id()]['disabled_by_save']);
@@ -458,14 +459,14 @@ final class DisabledBySaveChildTest extends KernelTestBase implements LoggerInte
     $this->assertSame('Platforms', $by_node[(int) $by_hook->id()]['parent_title']);
     $this->assertSame((int) $parent->id(), $by_node[(int) $by_hook->id()]['parent_id']);
 
-    $this->assertCount(2, $this->syncManager()->disabledManagedChildren($parent));
+    $this->assertCount(2, $this->statusReporter()->disabledManagedChildren($parent));
     $other = MenuLinkContent::create([
       'title' => 'Other',
       'menu_name' => 'main',
       'link' => ['uri' => 'route:<nolink>'],
     ]);
     $other->save();
-    $this->assertSame([], $this->syncManager()->disabledManagedChildren($other));
+    $this->assertSame([], $this->statusReporter()->disabledManagedChildren($other));
 
     // The parent's form names them.
     $form = $this->container->get('entity.form_builder')->getForm($this->reload($parent));
@@ -485,6 +486,13 @@ final class DisabledBySaveChildTest extends KernelTestBase implements LoggerInte
 
     $form = $this->container->get('entity.form_builder')->getForm($this->reload($parent));
     $this->assertArrayNotHasKey('disabled_children', $form['menu_autopilot']);
+  }
+
+  /**
+   * The status reporter.
+   */
+  private function statusReporter(): NavStatusReporter {
+    return $this->container->get('menu_autopilot.status_reporter');
   }
 
   /**

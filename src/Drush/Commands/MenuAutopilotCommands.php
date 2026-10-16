@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\menu_autopilot\Drush\Commands;
 
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_autopilot\NavSyncManager;
 use Drush\Attributes as CLI;
 use Drush\Commands\DrushCommands;
@@ -16,6 +17,7 @@ final class MenuAutopilotCommands extends DrushCommands {
 
   public function __construct(
     private readonly NavSyncManager $syncManager,
+    private readonly NavStatusReporter $statusReporter,
   ) {
     parent::__construct();
   }
@@ -26,6 +28,7 @@ final class MenuAutopilotCommands extends DrushCommands {
   public static function create(ContainerInterface $container): self {
     return new self(
       $container->get('menu_autopilot.sync_manager'),
+      $container->get('menu_autopilot.status_reporter'),
     );
   }
 
@@ -41,13 +44,13 @@ final class MenuAutopilotCommands extends DrushCommands {
   public function rebuild(): void {
     $this->syncManager->reconcile();
     $this->logger()->success(dt('Menu Autopilot: rebuilt automatic children for menus @menus.', [
-      '@menus' => implode(', ', $this->syncManager->managedMenus()),
+      '@menus' => implode(', ', $this->statusReporter->managedMenus()),
     ]));
 
     // A disabled automatic child is a published node no menu shows. The
     // rebuild has just tried to enable the ones it may enable, so whatever is
     // listed here needs an operator.
-    $disabled = $this->syncManager->disabledManagedChildren();
+    $disabled = $this->statusReporter->disabledManagedChildren();
     foreach ($disabled as $row) {
       $this->logger()->warning(dt('Disabled automatic child: "@title" (link @link, node @nid) under "@parent" (link @parent_id). @reason', [
         '@title' => $row['title'],

@@ -6,6 +6,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Read helpers (`managedMenus()`, `getSource()`, `existingChildrenPolicy()`,
+  `preservesEditorOrder()`, `disabledManagedChildren()`) live only on
+  `NavStatusReporter`. Callers read that service. The sync manager no
+  longer wraps them. Sync behavior is unchanged.
+
 ## [1.4.10] - 2026-10-15
 
 ### Changed

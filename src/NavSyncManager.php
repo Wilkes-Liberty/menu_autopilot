@@ -137,7 +137,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->isManaged($link)) {
       return;
     }
-    $source = $this->getSource($link);
+    $source = $this->statusReporter->getSource($link);
     if (($source['type'] ?? 'none') === 'none'
       || $this->statusReporter->isUnavailableTermSource($source)) {
       return;
@@ -171,7 +171,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing || $this->isManaged($link)) {
       return;
     }
-    if (($this->getSource($link)['type'] ?? 'none') !== 'none') {
+    if (($this->statusReporter->getSource($link)['type'] ?? 'none') !== 'none') {
       return;
     }
     $this->releaseOwnedChildren($link);
@@ -226,45 +226,6 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->isDisabledBySave($link)) {
       $this->setDisabledBySave($link, FALSE);
     }
-  }
-
-  /**
-   * Managed children that are disabled, so an operator can find them.
-   *
-   * A sync never enables a link an editor disabled, and it cannot always
-   * enable one that another module's save hook disabled. Both are easy to
-   * miss: the node is published and its link exists, but no menu shows it.
-   *
-   * @param \Drupal\menu_link_content\MenuLinkContentInterface|null $parent
-   *   Limit the report to one parent, or NULL for every dynamic parent in the
-   *   managed menus.
-   *
-   * @return array<int, array{parent_id: int, parent_title: string, link_id: int, title: string, node: int, disabled_by_save: bool}>
-   *   One row per disabled managed child. `disabled_by_save` is TRUE when a
-   *   sync save left the link disabled and no sync has enabled it since.
-   */
-  public function disabledManagedChildren(?MenuLinkContentInterface $parent = NULL): array {
-    $rows = [];
-    $parents = $parent
-      ? [$parent]
-      : $this->statusReporter->findDynamicParents();
-    foreach ($parents as $candidate) {
-      foreach ($this->statusReporter->loadChildren($candidate) as $link) {
-        $data = $this->getData($link);
-        if (empty($data['managed']) || $link->isEnabled()) {
-          continue;
-        }
-        $rows[] = [
-          'parent_id' => (int) $candidate->id(),
-          'parent_title' => (string) $candidate->getTitle(),
-          'link_id' => (int) $link->id(),
-          'title' => (string) $link->getTitle(),
-          'node' => (int) ($data['node'] ?? 0),
-          'disabled_by_save' => !empty($data['disabled_by_save']),
-        ];
-      }
-    }
-    return $rows;
   }
 
   /**
@@ -343,7 +304,7 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing) {
       return;
     }
-    $source = $this->getSource($parent);
+    $source = $this->statusReporter->getSource($parent);
     if ($this->statusReporter->isUnavailableTermSource($source)) {
       return;
     }
@@ -353,7 +314,7 @@ final class NavSyncManager implements DestructableInterface {
 
     $this->syncing = TRUE;
     try {
-      $policy = $this->existingChildrenPolicy($source);
+      $policy = $this->statusReporter->existingChildrenPolicy($source);
       if (!empty($source['reparent_matches'])) {
         foreach ($this->reparentMatchingLinks($parent, $desired) as $id => $link) {
           $siblings[$id] = $link;
@@ -374,7 +335,7 @@ final class NavSyncManager implements DestructableInterface {
 
       $weight = 0;
       $seen = [];
-      $preserve = $this->preservesEditorOrder($source);
+      $preserve = $this->statusReporter->preservesEditorOrder($source);
       $append_weight = $preserve ? $partition['append_weight'] : 0;
       $adoptable = $policy === 'replace' ? [] : $partition['adoptable'];
       $owned = $existing;
@@ -471,7 +432,7 @@ final class NavSyncManager implements DestructableInterface {
    *   canonical URI. Callers that print a change format the arrow.
    */
   public function normalizeNodeUris(?array $menu_names = NULL): array {
-    $menus = $menu_names ?? $this->managedMenus();
+    $menus = $menu_names ?? $this->statusReporter->managedMenus();
     if ($menus === []) {
       return [];
     }
@@ -510,19 +471,6 @@ final class NavSyncManager implements DestructableInterface {
       $this->syncing = $was_syncing;
     }
     return $changed;
-  }
-
-  /**
-   * The menus whose links may drive automatic children.
-   *
-   * An explicit empty list means no menus. Only a missing value uses the
-   * install default (`main`).
-   *
-   * @return string[]
-   *   The configured menu machine names.
-   */
-  public function managedMenus(): array {
-    return $this->statusReporter->managedMenus();
   }
 
   /**
@@ -590,7 +538,7 @@ final class NavSyncManager implements DestructableInterface {
       return TRUE;
     }
     // Otherwise, the node may newly match this parent's source.
-    return $this->nodeMatchesSource($node, $this->getSource($parent));
+    return $this->nodeMatchesSource($node, $this->statusReporter->getSource($parent));
   }
 
   /**
@@ -794,7 +742,7 @@ final class NavSyncManager implements DestructableInterface {
     $link = $link->getUntranslated();
     $node = $node->getUntranslated();
     $changed = $this->syncLinkTitles($link, $node, $source);
-    if (!$this->preservesEditorOrder($source) && (int) $link->getWeight() !== $weight) {
+    if (!$this->statusReporter->preservesEditorOrder($source) && (int) $link->getWeight() !== $weight) {
       $link->set('weight', $weight);
       $changed = TRUE;
     }
@@ -808,22 +756,6 @@ final class NavSyncManager implements DestructableInterface {
     if ($changed) {
       $this->saveChild($link, $parent, $node);
     }
-  }
-
-  /**
-   * TRUE when the parent keeps editor-set child weights (drag order).
-   *
-   * Manual sources always follow the hand-picked node list, even if a leftover
-   * or site-default `preserve` value is stored on the descriptor.
-   *
-   * @param array $source
-   *   The parent source descriptor.
-   *
-   * @return bool
-   *   TRUE when child weights are left alone.
-   */
-  public function preservesEditorOrder(array $source): bool {
-    return ($source['type'] ?? '') !== 'manual' && ($source['sort'] ?? '') === 'preserve';
   }
 
   /**
@@ -923,32 +855,6 @@ final class NavSyncManager implements DestructableInterface {
       ['clear' => TRUE, 'langcode' => $node->language()->getId()],
     ));
     return $title !== '' ? $title : (string) $node->label();
-  }
-
-  /**
-   * How unmanaged children under a parent are treated during sync.
-   *
-   * @param array $source
-   *   The parent source descriptor.
-   *
-   * @return string
-   *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
-   */
-  public function existingChildrenPolicy(array $source): string {
-    return $this->statusReporter->existingChildrenPolicy($source);
-  }
-
-  /**
-   * The parent link's source descriptor (empty when it is not dynamic).
-   *
-   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
-   *   The menu link.
-   *
-   * @return array
-   *   The stored source map, or an empty array.
-   */
-  public function getSource(MenuLinkContentInterface $link): array {
-    return $this->statusReporter->getSource($link);
   }
 
   /**

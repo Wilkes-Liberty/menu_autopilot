@@ -364,7 +364,7 @@ function menu_autopilot_form_menu_edit_form_alter(array &$form, FormStateInterfa
   if (!$menu instanceof Menu) {
     return;
   }
-  $managed = \Drupal::service('menu_autopilot.sync_manager')->managedMenus();
+  $managed = \Drupal::service('menu_autopilot.status_reporter')->managedMenus();
   if (!in_array($menu->id(), $managed, TRUE)) {
     return;
   }
@@ -408,7 +408,7 @@ function menu_autopilot_form_menu_link_content_form_alter(array &$form, FormStat
   }
   $source = is_array($data['source'] ?? NULL) ? $data['source'] : [];
   $settings = \Drupal::config('menu_autopilot.settings');
-  $managed_menus = \Drupal::service('menu_autopilot.sync_manager')->managedMenus();
+  $managed_menus = \Drupal::service('menu_autopilot.status_reporter')->managedMenus();
   $settings_url = Url::fromRoute('menu_autopilot.settings_form')->toString();
 
   // Builds a #states 'visible' condition that shows an element when the source
@@ -622,9 +622,9 @@ function _menu_autopilot_disabled_children_summary(MenuLinkContentInterface $par
   if ($parent->isNew()) {
     return [];
   }
-  /** @var \Drupal\menu_autopilot\NavSyncManager $sync */
-  $sync = \Drupal::service('menu_autopilot.sync_manager');
-  $rows = $sync->disabledManagedChildren($parent);
+  /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+  $reporter = \Drupal::service('menu_autopilot.status_reporter');
+  $rows = $reporter->disabledManagedChildren($parent);
   if ($rows === []) {
     return [];
   }

@@ -8,7 +8,7 @@ use Drupal\Component\Uuid\Uuid;
 use Drupal\Core\Entity\EntityRepositoryInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
-use Drupal\menu_autopilot\NavSyncManager;
+use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\tool\Attribute\Tool;
 use Drupal\tool\Tool\ToolOperation;
@@ -49,9 +49,9 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
   protected ModuleHandlerInterface $moduleHandler;
 
   /**
-   * Sync manager.
+   * Status reporter.
    */
-  protected NavSyncManager $syncManager;
+  protected NavStatusReporter $statusReporter;
 
   /**
    * {@inheritdoc}
@@ -60,7 +60,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->entityRepository = $container->get('entity.repository');
     $instance->moduleHandler = $container->get('module_handler');
-    $instance->syncManager = $container->get('menu_autopilot.sync_manager');
+    $instance->statusReporter = $container->get('menu_autopilot.status_reporter');
     return $instance;
   }
 
@@ -95,13 +95,13 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     $menu = (string) $link->getMenuName();
     $info['found'] = TRUE;
     $info['menu'] = $menu;
-    $info['menu_is_managed'] = in_array($menu, $this->syncManager->managedMenus(), TRUE);
+    $info['menu_is_managed'] = in_array($menu, $this->statusReporter->managedMenus(), TRUE);
     $info['enabled'] = $link->isEnabled();
 
     $parent_source = $this->sourceOf($this->parentOf($link));
     $info['under_dynamic_parent'] = $parent_source !== [];
     if ($parent_source !== []) {
-      $info['parent_existing_children'] = $this->syncManager->existingChildrenPolicy($parent_source);
+      $info['parent_existing_children'] = $this->statusReporter->existingChildrenPolicy($parent_source);
     }
 
     if (!empty($data['managed'])) {
@@ -116,7 +116,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     if ($source !== []) {
       $info['role'] = 'dynamic_parent';
       $info['source_type'] = (string) $source['type'];
-      $info['existing_children'] = $this->syncManager->existingChildrenPolicy($source);
+      $info['existing_children'] = $this->statusReporter->existingChildrenPolicy($source);
       $info['effect_of_client_edit'] = $this->dynamicParentEffect($source, $info['existing_children'], $info['menu_is_managed']);
       return $info;
     }
@@ -154,7 +154,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
       return [];
     }
     $data = _menu_autopilot_link_data($link);
-    $source = $this->syncManager->getSource($link);
+    $source = $this->statusReporter->getSource($link);
     if (!empty($data['managed']) || ($source['type'] ?? 'none') === 'none') {
       return [];
     }
@@ -165,7 +165,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
    * What an edit to an automatic child does.
    */
   private function managedChildEffect(array $parent_source): string {
-    $keeps_weight = $this->syncManager->preservesEditorOrder($parent_source);
+    $keeps_weight = $this->statusReporter->preservesEditorOrder($parent_source);
     $overwritten = $keeps_weight
       ? 'Title and URI are overwritten on the next sync of its parent. Weight is kept, because the parent keeps the current order.'
       : 'Title, weight and URI are overwritten on the next sync of its parent.';
