@@ -498,7 +498,7 @@ final class NavStatusReporter {
    * @return \Drupal\Core\Entity\EntityStorageInterface
    *   The storage handler.
    */
-  public function menuLinkStorage(): EntityStorageInterface {
+  private function menuLinkStorage(): EntityStorageInterface {
     return $this->entityTypeManager->getStorage('menu_link_content');
   }
 
