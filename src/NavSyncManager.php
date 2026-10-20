@@ -261,8 +261,7 @@ final class NavSyncManager implements DestructableInterface {
     try {
       $storage = $this->entityTypeManager->getStorage('menu_link_content');
       foreach ($storage->loadMultiple($ids) as $link) {
-        if ($link instanceof MenuLinkContentInterface
-          && $this->statusReporter->isManaged($link)) {
+        if ($this->statusReporter->isManaged($link)) {
           $link->delete();
         }
       }
@@ -454,9 +453,6 @@ final class NavSyncManager implements DestructableInterface {
     $this->syncing = TRUE;
     try {
       foreach ($storage->loadMultiple($ids) as $link) {
-        if (!$link instanceof MenuLinkContentInterface) {
-          continue;
-        }
         $item = $link->get('link')->first();
         if ($item === NULL) {
           continue;
@@ -511,8 +507,7 @@ final class NavSyncManager implements DestructableInterface {
       ->execute();
     $moved = [];
     foreach ($storage->loadMultiple($ids) as $link) {
-      if (!$link instanceof MenuLinkContentInterface
-        || $this->statusReporter->isManaged($link)) {
+      if ($this->statusReporter->isManaged($link)) {
         continue;
       }
       if ((int) $link->id() === (int) $parent->id()) {
@@ -614,12 +609,9 @@ final class NavSyncManager implements DestructableInterface {
     // the language create() assigns, which is what this did before.
     $storage = $this->entityTypeManager->getStorage('menu_link_content');
     $probe = $storage->create([]);
-    if ($probe instanceof MenuLinkContentInterface
-      && $probe->isTranslatable()
-      && !$node->language()->isLocked()) {
+    if ($probe->isTranslatable() && !$node->language()->isLocked()) {
       $values['langcode'] = $node->language()->getId();
     }
-    /** @var \Drupal\menu_link_content\MenuLinkContentInterface $link */
     $link = $storage->create($values);
     // Translations are written before the first save, so create is one write.
     $this->syncLinkTitles($link, $node, $source);
