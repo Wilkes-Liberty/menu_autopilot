@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Drupal\menu_autopilot;
 
 use Drupal\Core\DestructableInterface;
-use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Session\AccountProxyInterface;
 use Drupal\Core\Utility\Token;
@@ -134,7 +133,7 @@ final class NavSyncManager implements DestructableInterface {
    * Ignores links the manager owns, so it never reacts to its own writes.
    */
   public function syncParentIfDynamic(MenuLinkContentInterface $link): void {
-    if ($this->isManaged($link)) {
+    if ($this->statusReporter->isManaged($link)) {
       return;
     }
     $source = $this->statusReporter->getSource($link);
@@ -168,7 +167,7 @@ final class NavSyncManager implements DestructableInterface {
    * save is enough — leftover owned flags with no source are orphans.
    */
   public function releaseOwnedChildrenIfSourceCleared(MenuLinkContentInterface $link): void {
-    if ($this->syncing || $this->isManaged($link)) {
+    if ($this->syncing || $this->statusReporter->isManaged($link)) {
       return;
     }
     if (($this->statusReporter->getSource($link)['type'] ?? 'none') !== 'none') {
@@ -187,10 +186,14 @@ final class NavSyncManager implements DestructableInterface {
    * is not treated as a delete.
    */
   public function flagManagedIfParentMoving(MenuLinkContentInterface $link): void {
-    if ($this->syncing || !$this->isManaged($link) || !$link->id()) {
+    if ($this->syncing
+      || !$this->statusReporter->isManaged($link)
+      || !$link->id()) {
       return;
     }
-    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    $stored = $this->entityTypeManager
+      ->getStorage('menu_link_content')
+      ->loadUnchanged((int) $link->id());
     if (!$stored instanceof MenuLinkContentInterface) {
       return;
     }
@@ -211,7 +214,9 @@ final class NavSyncManager implements DestructableInterface {
     if ($this->syncing || !$link->id() || !$this->isDisabledBySave($link)) {
       return;
     }
-    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    $stored = $this->entityTypeManager
+      ->getStorage('menu_link_content')
+      ->loadUnchanged((int) $link->id());
     if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
       $this->setDisabledBySave($link, FALSE);
     }
@@ -254,8 +259,10 @@ final class NavSyncManager implements DestructableInterface {
     }
     $this->syncing = TRUE;
     try {
-      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-        if ($link instanceof MenuLinkContentInterface && $this->isManaged($link)) {
+      $storage = $this->entityTypeManager->getStorage('menu_link_content');
+      foreach ($storage->loadMultiple($ids) as $link) {
+        if ($link instanceof MenuLinkContentInterface
+          && $this->statusReporter->isManaged($link)) {
           $link->delete();
         }
       }
@@ -280,7 +287,7 @@ final class NavSyncManager implements DestructableInterface {
     $this->syncing = TRUE;
     try {
       foreach ($this->statusReporter->loadChildren($parent) as $link) {
-        if ($this->isManaged($link)) {
+        if ($this->statusReporter->isManaged($link)) {
           $link->delete();
         }
       }
@@ -324,7 +331,7 @@ final class NavSyncManager implements DestructableInterface {
       }
       if ($policy === 'replace') {
         foreach ($siblings as $id => $link) {
-          if (!$this->isManaged($link)) {
+          if (!$this->statusReporter->isManaged($link)) {
             $link->delete();
             unset($siblings[$id]);
           }
@@ -381,7 +388,7 @@ final class NavSyncManager implements DestructableInterface {
       // extras (and add-only matches we left unmanaged) are not in $owned,
       // so they stay.
       foreach ($siblings as $id => $link) {
-        if ($this->isManaged($link)) {
+        if ($this->statusReporter->isManaged($link)) {
           continue;
         }
         $nid = $this->statusReporter->nodeIdFromLink($link);
@@ -392,7 +399,7 @@ final class NavSyncManager implements DestructableInterface {
       }
       if ($policy === 'adopt_prune') {
         foreach ($siblings as $link) {
-          if (!$this->isManaged($link)) {
+          if (!$this->statusReporter->isManaged($link)) {
             $link->delete();
           }
         }
@@ -436,7 +443,8 @@ final class NavSyncManager implements DestructableInterface {
     if ($menus === []) {
       return [];
     }
-    $ids = $this->menuLinkStorage()->getQuery()
+    $storage = $this->entityTypeManager->getStorage('menu_link_content');
+    $ids = $storage->getQuery()
       ->condition('menu_name', $menus, 'IN')
       ->accessCheck(FALSE)
       ->execute();
@@ -445,7 +453,7 @@ final class NavSyncManager implements DestructableInterface {
     $was_syncing = $this->syncing;
     $this->syncing = TRUE;
     try {
-      foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
+      foreach ($storage->loadMultiple($ids) as $link) {
         if (!$link instanceof MenuLinkContentInterface) {
           continue;
         }
@@ -496,13 +504,15 @@ final class NavSyncManager implements DestructableInterface {
     foreach ($this->statusReporter->findDynamicParents() as $other) {
       $protected['menu_link_content:' . $other->uuid()] = TRUE;
     }
-    $ids = $this->menuLinkStorage()->getQuery()
+    $storage = $this->entityTypeManager->getStorage('menu_link_content');
+    $ids = $storage->getQuery()
       ->condition('menu_name', $parent->getMenuName())
       ->accessCheck(FALSE)
       ->execute();
     $moved = [];
-    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-      if (!$link instanceof MenuLinkContentInterface || $this->isManaged($link)) {
+    foreach ($storage->loadMultiple($ids) as $link) {
+      if (!$link instanceof MenuLinkContentInterface
+        || $this->statusReporter->isManaged($link)) {
         continue;
       }
       if ((int) $link->id() === (int) $parent->id()) {
@@ -602,14 +612,15 @@ final class NavSyncManager implements DestructableInterface {
     // A translatable link is created in the node's language, so the other
     // languages can be added on it. A bundle that cannot be translated keeps
     // the language create() assigns, which is what this did before.
-    $probe = $this->menuLinkStorage()->create([]);
+    $storage = $this->entityTypeManager->getStorage('menu_link_content');
+    $probe = $storage->create([]);
     if ($probe instanceof MenuLinkContentInterface
       && $probe->isTranslatable()
       && !$node->language()->isLocked()) {
       $values['langcode'] = $node->language()->getId();
     }
     /** @var \Drupal\menu_link_content\MenuLinkContentInterface $link */
-    $link = $this->menuLinkStorage()->create($values);
+    $link = $storage->create($values);
     // Translations are written before the first save, so create is one write.
     $this->syncLinkTitles($link, $node, $source);
     $this->saveChild($link, $parent, $node);
@@ -642,7 +653,9 @@ final class NavSyncManager implements DestructableInterface {
    * nothing, and no menu shows the link.
    */
   private function flagIfSaveDisabled(MenuLinkContentInterface $link, MenuLinkContentInterface $parent, NodeInterface $node, bool $created): void {
-    $stored = $this->menuLinkStorage()->loadUnchanged((int) $link->id());
+    $stored = $this->entityTypeManager
+      ->getStorage('menu_link_content')
+      ->loadUnchanged((int) $link->id());
     if (!$stored instanceof MenuLinkContentInterface || $stored->isEnabled()) {
       return;
     }
@@ -696,7 +709,9 @@ final class NavSyncManager implements DestructableInterface {
 
     $link->set('enabled', TRUE);
     $link->save();
-    $stored = $this->menuLinkStorage()->loadUnchanged($id);
+    $stored = $this->entityTypeManager
+      ->getStorage('menu_link_content')
+      ->loadUnchanged($id);
     if ($stored instanceof MenuLinkContentInterface && $stored->isEnabled()) {
       $this->setDisabledBySave($link, FALSE);
       $this->saveChild($link, $parent, $node);
@@ -717,7 +732,7 @@ final class NavSyncManager implements DestructableInterface {
    * Whether one of this manager's saves left a managed link disabled.
    */
   private function isDisabledBySave(MenuLinkContentInterface $link): bool {
-    $data = $this->getData($link);
+    $data = $this->statusReporter->getData($link);
     return !empty($data['managed']) && !empty($data['disabled_by_save']);
   }
 
@@ -725,7 +740,7 @@ final class NavSyncManager implements DestructableInterface {
    * Set or remove the `disabled_by_save` flag, keeping the rest of the map.
    */
   private function setDisabledBySave(MenuLinkContentInterface $link, bool $flag): void {
-    $data = $this->getData($link);
+    $data = $this->statusReporter->getData($link);
     if ($flag) {
       $data['disabled_by_save'] = TRUE;
     }
@@ -858,27 +873,13 @@ final class NavSyncManager implements DestructableInterface {
   }
 
   /**
-   * Whether a link is a managed (auto-generated) child.
-   */
-  private function isManaged(MenuLinkContentInterface $link): bool {
-    return $this->statusReporter->isManaged($link);
-  }
-
-  /**
-   * Read the `menu_autopilot` map field off a link.
-   */
-  private function getData(MenuLinkContentInterface $link): array {
-    return $this->statusReporter->getData($link);
-  }
-
-  /**
    * Drop managed bookkeeping on children; keep the links themselves.
    */
   private function releaseOwnedChildren(MenuLinkContentInterface $parent): void {
     $this->syncing = TRUE;
     try {
       foreach ($this->statusReporter->loadChildren($parent) as $link) {
-        if ($this->isManaged($link)) {
+        if ($this->statusReporter->isManaged($link)) {
           $link->set('menu_autopilot', NULL);
           $link->save();
         }
@@ -887,16 +888,6 @@ final class NavSyncManager implements DestructableInterface {
     finally {
       $this->syncing = FALSE;
     }
-  }
-
-  /**
-   * The menu link content storage handler.
-   *
-   * @return \Drupal\Core\Entity\EntityStorageInterface
-   *   The storage handler.
-   */
-  private function menuLinkStorage(): EntityStorageInterface {
-    return $this->statusReporter->menuLinkStorage();
   }
 
 }

@@ -177,7 +177,6 @@ final class NavStatusReporterTest extends KernelTestBase {
    * @covers ::existingChildrenPolicy
    * @covers ::isManaged
    * @covers ::getData
-   * @covers ::menuLinkStorage
    * @covers ::preservesEditorOrder
    * @covers ::disabledManagedChildren
    */
@@ -204,8 +203,6 @@ final class NavStatusReporterTest extends KernelTestBase {
     $data = $reporter->getData($child);
     $this->assertTrue($data['managed']);
     $this->assertGreaterThan(0, (int) ($data['node'] ?? 0));
-
-    $this->assertSame('menu_link_content', $reporter->menuLinkStorage()->getEntityTypeId());
 
     $this->assertFalse($reporter->preservesEditorOrder($source));
     $this->assertTrue($reporter->preservesEditorOrder(['type' => 'bundle', 'sort' => 'preserve']));
