@@ -33,10 +33,13 @@ jobs:
       matrix:
         include:
           # The floor of each declared range, plus the ceiling. The module
-          # declares ^10.6 || ^11.3 in both composer.json and the info.yml.
+          # declares ^10.6 || ^11.3 || ^12 in both composer.json and the info.yml.
           #
           # Every floor gets a leg, because a claim CI does not exercise is not
-          # a claim — it is a promise nobody checked.
+          # a claim — it is a promise nobody checked. Drupal 12 is still beta
+          # (12.0.0-beta2) and the optional MCP dependencies do not declare it,
+          # so this matrix does not build a 12.x site. The ^12 half is the
+          # GitLab next-major opt-in (manual) plus CoreVersionRequirementTest.
           #
           # `constraint` is spelled out per leg rather than derived from
           # `drupal`: ^11.3 means ">=11.3 <12" and resolves to 11.4, so an
@@ -185,10 +188,11 @@ jobs:
           SIMPLETEST_DB: 'sqlite://localhost/:memory:'
           BROWSERTEST_OUTPUT_DIRECTORY: /tmp
           SYMFONY_DEPRECATIONS_HELPER: weak
-          # A dropped suite must fail the build, not pass quietly. 72 tests
-          # collect today outside the MCP submodule, all in tests/src/Kernel. Raise this deliberately as
-          # the suite grows; never lower it to make a red run green.
-          MIN_TESTS: '72'
+          # A dropped suite must fail the build, not pass quietly. 76 tests
+          # collect today outside the MCP submodule (Kernel plus the core-range
+          # unit tests). Raise this deliberately as the suite grows; never lower
+          # it to make a red run green.
+          MIN_TESTS: '76'
         run: |
           set -euo pipefail
           # One invocation per directory: PHPUnit 9.6 takes a *single*

@@ -123,7 +123,8 @@ edit to an automatic child is overwritten by the next sync. The optional
 
 It needs [Tool API](https://www.drupal.org/project/tool) 1.0.0-beta8 or later
 and [MCP Sentinel](https://www.drupal.org/project/mcp_sentinel) 2.22 or later.
-Menu Autopilot itself depends on neither. Every tool needs MCP Sentinel
+Menu Autopilot itself depends on neither. The submodule declares Drupal
+`^10.6 || ^11.3` only: MCP Sentinel does not declare Drupal 12 yet. Every tool needs MCP Sentinel
 governance to be ready, the `access mcp sentinel context` permission and the
 restricted `use menu autopilot mcp tools` permission. Every refusal is one fixed
 message. Results are capped at 128 KiB, or the Sentinel profile's response cap
@@ -172,7 +173,7 @@ These are deliberately not tools:
 
 ## Requirements
 
-- Drupal 10.6+ / 11.3+
+- Drupal 10.6+ / 11.3+ / 12
 - Core `menu_link_content` and `node`
 - Suggested: [Token](https://www.drupal.org/project/token) — adds the token browser UI and extra
   tokens for the child-label pattern (core's token service handles `[node:*]` without it).
