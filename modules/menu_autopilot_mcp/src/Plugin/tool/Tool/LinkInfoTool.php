@@ -6,7 +6,6 @@ namespace Drupal\menu_autopilot_mcp\Plugin\tool\Tool;
 
 use Drupal\Component\Uuid\Uuid;
 use Drupal\Core\Entity\EntityRepositoryInterface;
-use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -44,12 +43,11 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
   protected EntityRepositoryInterface $entityRepository;
 
   /**
-   * Module handler.
-   */
-  protected ModuleHandlerInterface $moduleHandler;
-
-  /**
    * Status reporter.
+   *
+   * Reads go through this service: getData(), isManaged(), getSource(),
+   * and isUnavailableTermSource(). The tool does not inject ModuleHandler
+   * to redo those checks.
    */
   protected NavStatusReporter $statusReporter;
 
@@ -59,7 +57,6 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
     $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
     $instance->entityRepository = $container->get('entity.repository');
-    $instance->moduleHandler = $container->get('module_handler');
     $instance->statusReporter = $container->get('menu_autopilot.status_reporter');
     return $instance;
   }
@@ -91,7 +88,8 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
       return $info;
     }
 
-    $data = _menu_autopilot_link_data($link);
+    // Same map the reporter already exposes; do not call the .module helper.
+    $data = $this->statusReporter->getData($link);
     $menu = (string) $link->getMenuName();
     $info['found'] = TRUE;
     $info['menu'] = $menu;
@@ -104,7 +102,7 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
       $info['parent_existing_children'] = $this->statusReporter->existingChildrenPolicy($parent_source);
     }
 
-    if (!empty($data['managed'])) {
+    if ($this->statusReporter->isManaged($link)) {
       $info['role'] = 'managed_child';
       $info['node'] = (int) ($data['node'] ?? 0);
       $info['disabled_by_save'] = !empty($data['disabled_by_save']);
@@ -153,9 +151,10 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
     if ($link === NULL) {
       return [];
     }
-    $data = _menu_autopilot_link_data($link);
+    // getSource() is not a dynamic-parent test: type "none" is still a
+    // non-empty array and would mark under_dynamic_parent true.
     $source = $this->statusReporter->getSource($link);
-    if (!empty($data['managed']) || ($source['type'] ?? 'none') === 'none') {
+    if ($this->statusReporter->isManaged($link) || ($source['type'] ?? 'none') === 'none') {
       return [];
     }
     return $source;
@@ -176,7 +175,8 @@ final class LinkInfoTool extends MenuAutopilotToolBase {
    * What an edit to a dynamic parent does.
    */
   private function dynamicParentEffect(array $source, string $policy, bool $menu_is_managed): string {
-    if ($source['type'] === 'term' && !$this->moduleHandler->moduleExists('taxonomy')) {
+    // Leftover term sources do not sync; the reporter owns that check.
+    if ($this->statusReporter->isUnavailableTermSource($source)) {
       return 'This parent has a taxonomy term source and Taxonomy is not installed, so no sync runs and its children are left alone.';
     }
     $effect = 'Saving this link runs a full sync of its children. Automatic children are created, retitled, re-weighted and deleted to match the source.';

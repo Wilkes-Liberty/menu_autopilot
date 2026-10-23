@@ -12,6 +12,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `menu_autopilot_mcp` submodule stays on `^10.6 || ^11.3` because MCP
   Sentinel has not declared Drupal 12 yet.
   ([#3617292](https://www.drupal.org/project/menu_autopilot/issues/3617292))
+- Link-info MCP reads (`getData()`, `isManaged()`, `getSource()`,
+  `isUnavailableTermSource()`) go through `NavStatusReporter` only.
+  The reporter inlines `menu_link_content` storage so the always-true
+  `instanceof` guards can go. Tool responses and sync behavior are
+  unchanged.
 
 ## [1.4.11] - 2026-10-19
 

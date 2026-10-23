@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Drupal\menu_autopilot;
 
 use Drupal\Core\Config\ConfigFactoryInterface;
-use Drupal\Core\Entity\EntityStorageInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -166,16 +165,16 @@ final class NavStatusReporter {
     if ($menus === []) {
       return [];
     }
-    $ids = $this->menuLinkStorage()->getQuery()
+    // Inline getStorage so PHPStan sees menu_link_content, not a widened
+    // EntityStorageInterface. The always-true instanceof can then go.
+    $storage = $this->entityTypeManager->getStorage('menu_link_content');
+    $ids = $storage->getQuery()
       ->condition('menu_name', $menus, 'IN')
       ->condition('menu_autopilot_dynamic', TRUE)
       ->accessCheck(FALSE)
       ->execute();
     $parents = [];
-    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-      if (!$link instanceof MenuLinkContentInterface) {
-        continue;
-      }
+    foreach ($storage->loadMultiple($ids) as $link) {
       $source = $this->getSource($link);
       if ($this->isUnavailableTermSource($source)) {
         continue;
@@ -194,16 +193,17 @@ final class NavStatusReporter {
    *   Child links, keyed by entity id.
    */
   public function loadChildren(MenuLinkContentInterface $parent): array {
-    $ids = $this->menuLinkStorage()->getQuery()
+    // Same inlined storage as findDynamicParents(): loadMultiple() is
+    // already menu_link_content, so no instanceof filter.
+    $storage = $this->entityTypeManager->getStorage('menu_link_content');
+    $ids = $storage->getQuery()
       ->condition('menu_name', $parent->getMenuName())
       ->condition('parent', 'menu_link_content:' . $parent->uuid())
       ->accessCheck(FALSE)
       ->execute();
     $children = [];
-    foreach ($this->menuLinkStorage()->loadMultiple($ids) as $link) {
-      if ($link instanceof MenuLinkContentInterface) {
-        $children[(int) $link->id()] = $link;
-      }
+    foreach ($storage->loadMultiple($ids) as $link) {
+      $children[(int) $link->id()] = $link;
     }
     return $children;
   }
@@ -490,16 +490,6 @@ final class NavStatusReporter {
    */
   public function getData(MenuLinkContentInterface $link): array {
     return _menu_autopilot_link_data($link);
-  }
-
-  /**
-   * The menu link content storage handler.
-   *
-   * @return \Drupal\Core\Entity\EntityStorageInterface
-   *   The storage handler.
-   */
-  private function menuLinkStorage(): EntityStorageInterface {
-    return $this->entityTypeManager->getStorage('menu_link_content');
   }
 
 }
