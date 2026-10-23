@@ -2,8 +2,8 @@ name: 'Menu Autopilot MCP'
 type: module
 description: 'Optional Tool API plugins for Menu Autopilot status, menu link info and URI normalisation, governed by MCP Sentinel.'
 package: 'Menu'
-# Menu Autopilot declares ^10.6 || ^11.3 || ^12. MCP Sentinel does not declare
-# Drupal 12 yet, so this submodule cannot either. Tool API is ^10.5 || ^11.
+# Menu Autopilot declares ^10.6 || ^11.3 || ^12. Tool API declares
+# ^10.5 || ^11, so this submodule stays off Drupal 12.
 core_version_requirement: ^10.6 || ^11.3
 dependencies:
   - menu_autopilot:menu_autopilot
