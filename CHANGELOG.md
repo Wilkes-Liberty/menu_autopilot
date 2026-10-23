@@ -6,6 +6,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Form-alter, install-backfill, and operator-copy kernel tests live in
+  `MenuAutopilotFormAndInstallTest`. `NavSyncManagerTest` is the sync
+  engine again. Behavior is unchanged.
+
 ## [1.5.0] - 2026-10-23
 
 ### Changed
