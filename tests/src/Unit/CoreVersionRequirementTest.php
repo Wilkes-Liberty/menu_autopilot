@@ -30,7 +30,7 @@ final class CoreVersionRequirementTest extends TestCase {
   }
 
   /**
-   * MCP Sentinel has not declared Drupal 12, so the tools submodule cannot.
+   * Tool API declares ^10.5 || ^11, so the tools submodule cannot claim 12.
    */
   public function testMcpSubmoduleDoesNotClaimDrupal12(): void {
     $this->assertSame(
