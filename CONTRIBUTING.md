@@ -35,7 +35,7 @@ package; you do not need to interact with it to contribute.
 
 ## Coding standards & checks
 
-This module targets Drupal 10.6+/11.3+ and PHP 8.1+. Please run the same checks CI runs:
+This module targets Drupal 10.6+/11.3+/12 and PHP 8.1+. Please run the same checks CI runs:
 
 ```bash
 # Drupal coding standards

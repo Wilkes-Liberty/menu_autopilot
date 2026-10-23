@@ -7,6 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- Declared Drupal 12 compatibility (`^10.6 || ^11.3 || ^12`) on the base
+  module. The 10.6 and 11.3 floors are unchanged. The optional
+  `menu_autopilot_mcp` submodule stays on `^10.6 || ^11.3` because MCP
+  Sentinel has not declared Drupal 12 yet.
+  ([#3617292](https://www.drupal.org/project/menu_autopilot/issues/3617292))
 - Link-info MCP reads (`getData()`, `isManaged()`, `getSource()`,
   `isUnavailableTermSource()`) go through `NavStatusReporter` only.
   The reporter inlines `menu_link_content` storage so the always-true

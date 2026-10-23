@@ -16,14 +16,22 @@ include:
 variables:
   _GITLAB_TEMPLATES_REPO: project/gitlab_templates
   _GITLAB_TEMPLATES_REF: main
-  # Test the supported floor, not just the default core. OPT_IN_* surfaces the job;
-  # _AUTORUN_* ('all') makes it run automatically instead of staying manual.
+  # This module declares `^10.6 || ^11.3 || ^12`. A support claim CI does not
+  # exercise is not a claim, so each live branch of that constraint gets a job.
+  # OPT_IN_* surfaces the job; _AUTORUN_* ('all') makes it run automatically
+  # instead of staying manual.
   # PREVIOUS_MAJOR = newest 10.x satisfying core_version_requirement (10.6, D10 floor);
   # PREVIOUS_MINOR = prior minor of the current major (11.3, D11 floor).
   OPT_IN_TEST_PREVIOUS_MAJOR: '1'
   OPT_IN_TEST_PREVIOUS_MINOR: '1'
   _AUTORUN_PREVIOUS_MAJOR: 'all'
   _AUTORUN_PREVIOUS_MINOR: 'all'
+  # The `^12` half of the constraint. Deliberately MANUAL rather than autorun:
+  # Drupal 12 is still a moving beta (12.0.0-beta2 as of this change), and a
+  # pipeline that goes red on upstream churn teaches nothing and trains people
+  # to ignore the badge. Run it before tagging, and drop `^12` from the
+  # constraint if it stops passing. The 10.6 and 11.3 floors stay autorun.
+  OPT_IN_TEST_NEXT_MAJOR: '1'
   # Forward-compat signal on the upcoming minor, available on demand (manual).
   OPT_IN_TEST_NEXT_MINOR: '1'
   # Dictionary is now complete for the words job 12543234 reported. Make the
