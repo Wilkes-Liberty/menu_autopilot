@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Link-info MCP reads (`getData()`, `isManaged()`, `getSource()`,
+  `isUnavailableTermSource()`) go through `NavStatusReporter` only.
+  The reporter inlines `menu_link_content` storage so the always-true
+  `instanceof` guards can go. Tool responses and sync behavior are
+  unchanged.
+
 ## [1.4.11] - 2026-10-19
 
 ### Changed
