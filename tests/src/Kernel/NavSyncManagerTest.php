@@ -6,15 +6,10 @@ namespace Drupal\Tests\menu_autopilot\Kernel;
 
 use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
-use Drupal\field\Entity\FieldConfig;
-use Drupal\field\Entity\FieldStorageConfig;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
-use Drupal\node\Entity\NodeType;
 use Drupal\path_alias\Entity\PathAlias;
-use Drupal\taxonomy\Entity\Term;
-use Drupal\taxonomy\Entity\Vocabulary;
 
 /**
  * Covers the automatic-children sync engine.
@@ -23,6 +18,8 @@ use Drupal\taxonomy\Entity\Vocabulary;
  * @coversDefaultClass \Drupal\menu_autopilot\NavSyncManager
  */
 final class NavSyncManagerTest extends KernelTestBase {
+
+  use MenuAutopilotKernelFixtureTrait;
 
   /**
    * {@inheritdoc}
@@ -40,45 +37,6 @@ final class NavSyncManagerTest extends KernelTestBase {
     'path_alias',
     'menu_autopilot',
   ];
-
-  /**
-   * The taxonomy term whose members become menu children.
-   */
-  private Term $platform;
-
-  /**
-   * {@inheritdoc}
-   */
-  protected function setUp(): void {
-    parent::setUp();
-
-    $this->installEntitySchema('user');
-    $this->installEntitySchema('node');
-    $this->installEntitySchema('taxonomy_term');
-    $this->installEntitySchema('menu_link_content');
-    $this->installEntitySchema('path_alias');
-    $this->installSchema('node', ['node_access']);
-    $this->installConfig(['system', 'filter', 'node', 'taxonomy']);
-
-    NodeType::create(['type' => 'solution', 'name' => 'Solution'])->save();
-
-    Vocabulary::create(['vid' => 'solution_type', 'name' => 'Solution type'])->save();
-    $this->platform = Term::create(['vid' => 'solution_type', 'name' => 'Platform']);
-    $this->platform->save();
-
-    FieldStorageConfig::create([
-      'field_name' => 'field_solution_type',
-      'entity_type' => 'node',
-      'type' => 'entity_reference',
-      'settings' => ['target_type' => 'taxonomy_term'],
-    ])->save();
-    FieldConfig::create([
-      'field_name' => 'field_solution_type',
-      'entity_type' => 'node',
-      'bundle' => 'solution',
-      'settings' => ['handler_settings' => ['target_bundles' => ['solution_type' => 'solution_type']]],
-    ])->save();
-  }
 
   /**
    * Publishing a matching node adds a clean-URI child; unpublishing removes it.
@@ -880,59 +838,6 @@ final class NavSyncManagerTest extends KernelTestBase {
   }
 
   /**
-   * Reloads a menu link from storage.
-   */
-  private function reloadLink(int $id): MenuLinkContentInterface {
-    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
-    $storage->resetCache([$id]);
-    $link = $storage->load($id);
-    $this->assertInstanceOf(MenuLinkContentInterface::class, $link);
-    return $link;
-  }
-
-  /**
-   * Creates the "Platforms" dynamic parent link sourced from the Platform term.
-   *
-   * @param array $overrides
-   *   Extra source-descriptor keys to merge in.
-   *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface
-   *   The saved parent link.
-   */
-  private function createDynamicParent(array $overrides = []): MenuLinkContentInterface {
-    $parent = MenuLinkContent::create([
-      'title' => 'Platforms',
-      'menu_name' => 'main',
-      'link' => ['uri' => 'route:<nolink>'],
-      'menu_autopilot' => [
-        'source' => array_merge([
-          'type' => 'term',
-          'reference_field' => 'field_solution_type',
-          'term' => (int) $this->platform->id(),
-          'sort' => 'title_asc',
-          'limit' => 0,
-        ], $overrides),
-      ],
-    ]);
-    $parent->save();
-    return $parent;
-  }
-
-  /**
-   * Creates a solution node tagged Platform.
-   */
-  private function createSolution(string $title, bool $published): Node {
-    $node = Node::create([
-      'type' => 'solution',
-      'title' => $title,
-      'status' => $published,
-      'field_solution_type' => ['target_id' => $this->platform->id()],
-    ]);
-    $node->save();
-    return $node;
-  }
-
-  /**
    * Whether a link is flagged as a Menu Autopilot-managed child.
    */
   private function isManagedLink(MenuLinkContentInterface $link): bool {
@@ -940,21 +845,6 @@ final class NavSyncManagerTest extends KernelTestBase {
       return FALSE;
     }
     return !empty($link->get('menu_autopilot')->first()->getValue()['managed']);
-  }
-
-  /**
-   * Loads the child links under a parent.
-   *
-   * @return \Drupal\menu_link_content\MenuLinkContentInterface[]
-   *   Child links keyed by entity id.
-   */
-  private function childrenOf(MenuLinkContentInterface $parent): array {
-    $storage = $this->container->get('entity_type.manager')->getStorage('menu_link_content');
-    $ids = $storage->getQuery()
-      ->condition('parent', 'menu_link_content:' . $parent->uuid())
-      ->accessCheck(FALSE)
-      ->execute();
-    return $storage->loadMultiple($ids);
   }
 
 }
