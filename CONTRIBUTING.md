@@ -27,7 +27,7 @@ package; you do not need to interact with it to contribute.
 1. Fork and branch off `1.x`.
 2. Make your change, following Drupal coding standards (see below).
 3. Add or update tests for any behavior change.
-4. Add an entry under `## [Unreleased]` in `CHANGELOG.md` for anything users
+4. Add a unique `changelog.d/<issue>-<slug>.md` fragment for anything users
    would notice. The `CHANGELOG updated` CI check is opt-in: apply the
    `changelog` label to PRs whose changes belong in the release notes and it
    enforces the entry (Dependabot PRs are exempt).
@@ -61,3 +61,8 @@ your pull request.
 By contributing, you agree that your contributions are licensed under the
 [GPL-2.0-or-later](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html) license that
 covers the project.
+
+## Changelog fragments
+
+Follow [the changelog workflow](.github/CHANGELOG.md) for independent PR notes
+and lossless release compilation. Existing opt-in entry policy is unchanged.
