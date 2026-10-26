@@ -5,15 +5,16 @@ bug reports, patches, docs, and test coverage.
 
 ## Where development happens
 
-- **Primary repository (issues + pull requests):**
+- **Code and pull requests:**
   [github.com/Wilkes-Liberty/menu_autopilot](https://github.com/Wilkes-Liberty/menu_autopilot)
 - **Mirror:** [git.drupalcode.org/project/menu_autopilot](https://git.drupalcode.org/project/menu_autopilot)
 - **Releases:** [drupal.org/project/menu_autopilot](https://www.drupal.org/project/menu_autopilot)
   (installable with Composer)
 
-Open issues and pull requests on GitHub. The drupalcode.org repository is a mirror that
-carries release branches and tags so `packages.drupal.org` can build the Composer
-package; you do not need to interact with it to contribute.
+Module bugs and feature requests use the [Drupal.org issue queue](https://www.drupal.org/project/issues/menu_autopilot).
+GitHub carries code, pull requests, and GitHub-specific workflow issues.
+Keep the Drupal.org issue as the canonical record for module behavior; do not
+duplicate it as a second GitHub issue.
 
 ## Branches
 
