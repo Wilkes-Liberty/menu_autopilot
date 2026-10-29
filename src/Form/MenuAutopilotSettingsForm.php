@@ -22,6 +22,8 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
     TypedConfigManagerInterface $typed_config_manager,
     protected EntityTypeManagerInterface $entityTypeManager,
     protected NavSyncManager $syncManager,
+    // Sort defaults share the parent-link option list.
+    protected MenuLinkAutopilotForm $linkForm,
   ) {
     parent::__construct($config_factory, $typed_config_manager);
   }
@@ -35,6 +37,7 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
       $container->get('config.typed'),
       $container->get('entity_type.manager'),
       $container->get('menu_autopilot.sync_manager'),
+      MenuLinkAutopilotForm::create($container),
     );
   }
 
@@ -82,7 +85,8 @@ final class MenuAutopilotSettingsForm extends ConfigFormBase {
       '#type' => 'select',
       '#title' => $this->t('Default sort'),
       '#description' => $this->t('“Keep current order” leaves weights alone so editors can drag children on the menu overview. The other options rewrite weights on every sync.'),
-      '#options' => _menu_autopilot_sort_options(),
+      // Same list the parent-link form offers; site defaults start here.
+      '#options' => $this->linkForm->sortOptions(),
       '#default_value' => $config->get('default_sort') ?: 'title_asc',
     ];
     $form['defaults']['default_limit'] = [
