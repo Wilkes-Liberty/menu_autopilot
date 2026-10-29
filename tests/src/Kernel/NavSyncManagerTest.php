@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\menu_autopilot\Kernel;
 
-use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -631,6 +630,9 @@ final class NavSyncManagerTest extends KernelTestBase {
   /**
    * Turning the source off clears owned flags and leaves the child links.
    *
+   * The node-form after-build case for this released child lives in
+   * MenuAutopilotFormAndInstallTest. This class is the sync engine.
+   *
    * @covers ::releaseOwnedChildrenIfSourceCleared
    */
   public function testTurningSourceOffClearsManagedKeepsChildren(): void {
@@ -649,23 +651,6 @@ final class NavSyncManagerTest extends KernelTestBase {
     $this->assertFalse($this->isManagedLink($child), 'The owned flag is cleared so editors can reclaim the link.');
     $this->assertCount(1, $this->childrenOf($parent), '“Nothing (curated by hand)” keeps the tree.');
     $this->assertFalse((bool) $this->reloadLink((int) $parent->id())->get('menu_autopilot_dynamic')->value);
-
-    $form = [
-      'actions' => [
-        'submit' => [
-          '#type' => 'submit',
-          '#submit' => ['Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit'],
-        ],
-      ],
-      'menu' => [
-        'link' => [
-          'entity_id' => ['#value' => $child->id()],
-        ],
-      ],
-    ];
-    $form = _menu_autopilot_node_form_after_build($form, new FormState());
-    $this->assertArrayNotHasKey('menu_autopilot_owned', $form);
-    $this->assertTrue(($form['menu']['#access'] ?? TRUE) !== FALSE);
   }
 
   /**

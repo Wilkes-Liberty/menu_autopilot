@@ -14,7 +14,9 @@ use Drupal\node\Entity\Node;
  * Covers node-form alter, install backfill, and operator-copy helpers.
  *
  * These cases call hook and .module helpers (after-build, existing-children
- * copy, the 10201 marker backfill). They are not the sync engine.
+ * copy, the 10201 marker backfill). They are not the sync engine. The
+ * released-child after-build case used to sit on NavSyncManagerTest
+ * after a source-off sync; it belongs here with the other form stubs.
  *
  * @group menu_autopilot
  */
@@ -236,6 +238,45 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     foreach ($messages as $message) {
       $this->assertStringNotContainsString('menu', strtolower($message));
     }
+  }
+
+  /**
+   * A released child is a normal menu link again on the node form.
+   *
+   * Turning the source off clears the owned flag and keeps the child.
+   * After-build must not hide menu_ui's widget: the editor can reclaim
+   * the link. The sync half of this case stays on NavSyncManagerTest.
+   */
+  public function testNodeFormAfterBuildLeavesReleasedChildVisible(): void {
+    $parent = $this->createDynamicParent();
+    $this->createSolution('Atlas', TRUE);
+    $children = $this->childrenOf($parent);
+    $child = reset($children);
+    $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
+    $this->assertNotEmpty(_menu_autopilot_link_data($child)['managed']);
+
+    $parent->set('menu_autopilot', NULL);
+    $parent->save();
+
+    $child = $this->reloadLink((int) $child->id());
+    $this->assertEmpty(_menu_autopilot_link_data($child)['managed'] ?? NULL);
+
+    $form = [
+      'actions' => [
+        'submit' => [
+          '#type' => 'submit',
+          '#submit' => ['Drupal\menu_ui\Hook\MenuUiHooks:formNodeFormSubmit'],
+        ],
+      ],
+      'menu' => [
+        'link' => [
+          'entity_id' => ['#value' => $child->id()],
+        ],
+      ],
+    ];
+    $form = _menu_autopilot_node_form_after_build($form, new FormState());
+    $this->assertArrayNotHasKey('menu_autopilot_owned', $form);
+    $this->assertTrue(($form['menu']['#access'] ?? TRUE) !== FALSE);
   }
 
   /**
