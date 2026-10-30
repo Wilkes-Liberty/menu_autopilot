@@ -425,15 +425,21 @@ final class NavStatusReporter {
   /**
    * How unmanaged children under a parent are treated during sync.
    *
+   * This is the allow-list. Form submit and status reads both come
+   * through here so an unknown stored or submitted value becomes adopt.
+   *
    * @param array $source
-   *   The parent source descriptor.
+   *   The parent source descriptor, or any array with existing_children.
    *
    * @return string
    *   One of adopt, adopt_prune, add, or replace. Unknown values become adopt.
    */
   public function existingChildrenPolicy(array $source): string {
-    $policy = $source['existing_children'] ?? 'adopt';
-    return _menu_autopilot_existing_children_policy($policy);
+    $value = (string) ($source['existing_children'] ?? 'adopt');
+    // Only these four policies are stored or honored. Anything else is adopt.
+    return in_array($value, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
+      ? $value
+      : 'adopt';
   }
 
   /**

@@ -29,7 +29,6 @@ use Drupal\Core\Field\FieldItemListInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Routing\RouteMatchInterface;
 use Drupal\Core\Session\AccountInterface;
-use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Drupal\Core\Url;
 use Drupal\menu_autopilot\Form\MenuLinkAutopilotForm;
 use Drupal\menu_link_content\MenuLinkContentInterface;
@@ -454,52 +453,6 @@ function _menu_autopilot_link_form_validate(array &$form, FormStateInterface $fo
  */
 function _menu_autopilot_link_form_builder(string $entity_type_id, MenuLinkContentInterface $link, array &$form, FormStateInterface $form_state): void {
   _menu_autopilot_link_form()->buildLink($link, $form_state);
-}
-
-/**
- * The Menu Autopilot details title on a parent link form.
- *
- * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
- *   The parent link being edited.
- *
- * @return \Drupal\Core\StringTranslation\TranslatableMarkup
- *   A title that names this module and this parent.
- */
-function _menu_autopilot_parent_settings_title(MenuLinkContentInterface $link): TranslatableMarkup {
-  return _menu_autopilot_link_form()->parentSettingsTitle($link);
-}
-
-/**
- * Sort options for the parent-link form and the site-wide defaults.
- *
- * @return array
- *   Translatable labels keyed by sort id.
- */
-function _menu_autopilot_sort_options(): array {
-  return _menu_autopilot_link_form()->sortOptions();
-}
-
-/**
- * Normalize an Existing children policy to a known value.
- *
- * @param mixed $value
- *   Stored or submitted policy.
- *
- * @return string
- *   One of adopt, adopt_prune, add, or replace.
- */
-function _menu_autopilot_existing_children_policy(mixed $value): string {
-  return _menu_autopilot_link_form()->existingChildrenPolicy($value);
-}
-
-/**
- * Per-option explanations for the Existing children radios.
- *
- * @return array
- *   Translatable markup keyed by policy id.
- */
-function _menu_autopilot_existing_children_help(): array {
-  return _menu_autopilot_link_form()->existingChildrenHelp();
 }
 
 /**
