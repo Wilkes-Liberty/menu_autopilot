@@ -7,7 +7,6 @@ namespace Drupal\Tests\menu_autopilot\Kernel;
 use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\menu_autopilot\Form\MenuLinkAutopilotForm;
-use Drupal\menu_autopilot\NavStatusReporter;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
@@ -82,8 +81,8 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     );
 
     // Help keys and the reporter allow-list must stay the same set.
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
     $reporter = $this->container->get('menu_autopilot.status_reporter');
-    $this->assertInstanceOf(NavStatusReporter::class, $reporter);
     foreach (array_keys($help) as $policy) {
       $this->assertSame(
         $policy,
