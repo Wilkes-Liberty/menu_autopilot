@@ -6,6 +6,7 @@ namespace Drupal\Tests\menu_autopilot\Kernel;
 
 use Drupal\Core\Form\FormState;
 use Drupal\KernelTests\KernelTestBase;
+use Drupal\menu_autopilot\Form\MenuLinkAutopilotForm;
 use Drupal\menu_link_content\Entity\MenuLinkContent;
 use Drupal\menu_link_content\MenuLinkContentInterface;
 use Drupal\node\Entity\Node;
@@ -13,10 +14,12 @@ use Drupal\node\Entity\Node;
 /**
  * Covers node-form alter, install backfill, and operator-copy helpers.
  *
- * These cases call hook and .module helpers (after-build, existing-children
- * copy, the 10201 marker backfill). They are not the sync engine. The
- * released-child after-build case used to sit on NavSyncManagerTest
- * after a source-off sync; it belongs here with the other form stubs.
+ * These cases call hook and .module helpers (after-build, the 10201
+ * marker backfill), MenuLinkAutopilotForm for operator-copy lists, and
+ * NavStatusReporter for existing-children policy. They are not the
+ * sync engine. The released-child after-build case used to sit on
+ * NavSyncManagerTest after a source-off sync; it belongs here with
+ * the other form stubs.
  *
  * @group menu_autopilot
  */
@@ -45,7 +48,8 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
    * Every Existing children policy has an operator-facing explanation.
    */
   public function testExistingChildrenHelpCoversEveryPolicy(): void {
-    $help = _menu_autopilot_existing_children_help();
+    $form = MenuLinkAutopilotForm::create($this->container);
+    $help = $form->existingChildrenHelp();
     $this->assertSame(
       ['adopt', 'adopt_prune', 'add', 'replace'],
       array_keys($help),
@@ -55,7 +59,7 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     }
     $this->assertSame(
       ['title_asc', 'title_desc', 'created_desc', 'created_asc', 'preserve'],
-      array_keys(_menu_autopilot_sort_options()),
+      array_keys($form->sortOptions()),
     );
     $named = MenuLinkContent::create([
       'title' => 'Platforms',
@@ -64,7 +68,7 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     ]);
     $this->assertSame(
       'Menu Autopilot: children of Platforms',
-      (string) _menu_autopilot_parent_settings_title($named),
+      (string) $form->parentSettingsTitle($named),
     );
     $untitled = MenuLinkContent::create([
       'title' => '',
@@ -73,7 +77,21 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     ]);
     $this->assertSame(
       'Menu Autopilot: children of this item',
-      (string) _menu_autopilot_parent_settings_title($untitled),
+      (string) $form->parentSettingsTitle($untitled),
+    );
+
+    // Help keys and the reporter allow-list must stay the same set.
+    /** @var \Drupal\menu_autopilot\NavStatusReporter $reporter */
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
+    foreach (array_keys($help) as $policy) {
+      $this->assertSame(
+        $policy,
+        $reporter->existingChildrenPolicy(['existing_children' => $policy]),
+      );
+    }
+    $this->assertSame(
+      'adopt',
+      $reporter->existingChildrenPolicy(['existing_children' => 'unknown']),
     );
   }
 
