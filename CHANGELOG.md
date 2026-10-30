@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-29
+
 ### Changed
 - Form-alter, install-backfill, and operator-copy kernel tests live in
   `MenuAutopilotFormAndInstallTest`. `NavSyncManagerTest` is the sync
@@ -14,6 +16,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`NavSyncManagerTest`, `NavStatusReporterTest`,
   `MenuAutopilotFormAndInstallTest`) use
   `MenuAutopilotKernelFixtureTrait`. Behavior is unchanged.
+- Use independent changelog fragments for pull requests and the shared validator for lossless release preparation.
+- Parent-link form alter, validate, builders, and option helpers live in `MenuLinkAutopilotForm`. `menu_autopilot.module` keeps the hook and Form API wrappers. Behavior is unchanged.
 
 ## [1.5.0] - 2026-10-23
 
