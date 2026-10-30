@@ -69,12 +69,31 @@ final class CoreVersionRequirementTest extends TestCase {
    * Reads the drupal/core Composer constraint.
    */
   private function composerCoreConstraint(): string {
-    $path = $this->moduleRoot() . '/composer.json';
+    $path = $this->composerJsonPath();
     $this->assertFileExists($path);
     $composer = json_decode((string) file_get_contents($path), TRUE);
     $this->assertIsArray($composer);
     $this->assertIsString($composer['require']['drupal/core'] ?? NULL);
     return $composer['require']['drupal/core'];
+  }
+
+  /**
+   * The module composer.json, read from the project mount on drupal.org.
+   *
+   * On drupal.org GitLab CI the checkout is also the Composer project
+   * root. expand_composer_json.php overwrites its composer.json and drops
+   * require.drupal/core, and gitlab_templates moves the module's own file
+   * onto web/modules/custom/menu_autopilot. Reading the checkout file there
+   * yields a null constraint.
+   */
+  private function composerJsonPath(): string {
+    $root = $this->moduleRoot();
+    foreach (glob($root . '/web/modules/*/menu_autopilot') ?: [] as $mount) {
+      if (is_file($mount . '/menu_autopilot.info.yml') && is_readable($mount . '/composer.json')) {
+        return $mount . '/composer.json';
+      }
+    }
+    return $root . '/composer.json';
   }
 
   /**
