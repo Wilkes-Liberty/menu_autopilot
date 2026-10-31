@@ -155,7 +155,8 @@ function menu_autopilot_entity_presave(EntityInterface $entity): void {
     return;
   }
   if ($entity->hasField('menu_autopilot_dynamic')) {
-    $data = _menu_autopilot_link_data($entity);
+    // The reporter owns the map read; empty or non-array maps are [].
+    $data = \Drupal::service('menu_autopilot.status_reporter')->getData($entity);
     $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
     $entity->set('menu_autopilot_dynamic', $dynamic);
   }
@@ -287,7 +288,9 @@ function _menu_autopilot_node_form_after_build(array $form, FormStateInterface $
   if (!$link instanceof MenuLinkContentInterface) {
     return $form;
   }
-  if (empty(_menu_autopilot_link_data($link)['managed'])) {
+  // Owned children hide menu_ui's widget. The reporter owns the map read.
+  $data = \Drupal::service('menu_autopilot.status_reporter')->getData($link);
+  if (empty($data['managed'])) {
     return $form;
   }
 
@@ -500,21 +503,4 @@ function _menu_autopilot_existing_children_policy(mixed $value): string {
  */
 function _menu_autopilot_existing_children_help(): array {
   return _menu_autopilot_link_form()->existingChildrenHelp();
-}
-
-/**
- * Reads the `menu_autopilot` map value off a menu link.
- *
- * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
- *   The menu link.
- *
- * @return array
- *   The stored map, or an empty array.
- */
-function _menu_autopilot_link_data(MenuLinkContentInterface $link) {
-  if (!$link->hasField('menu_autopilot') || $link->get('menu_autopilot')->isEmpty()) {
-    return [];
-  }
-  $value = $link->get('menu_autopilot')->first()->getValue();
-  return is_array($value) ? $value : [];
 }

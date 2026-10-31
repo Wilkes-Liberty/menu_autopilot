@@ -155,14 +155,14 @@ final class InternalFieldAccessTest extends KernelTestBase {
     $this->assertSame([], $form_state->getErrors());
 
     $saved = $this->reload($link);
-    $data = _menu_autopilot_link_data($saved);
+    $data = $this->linkData($saved);
     $this->assertSame('bundle', $data['source']['type'] ?? NULL, 'The form wrote the descriptor.');
     $this->assertSame('page', $data['source']['bundle'] ?? NULL);
     $this->assertTrue((bool) $saved->get('menu_autopilot_dynamic')->value, 'Presave still sets the marker.');
 
     $children = $this->childrenOf($saved);
     $this->assertCount(1, $children, 'Saving the form synced the children.');
-    $this->assertTrue(!empty(_menu_autopilot_link_data(reset($children))['managed']), 'The sync wrote the managed map on the child it created.');
+    $this->assertTrue(!empty($this->linkData(reset($children))['managed']), 'The sync wrote the managed map on the child it created.');
   }
 
   /**
@@ -194,7 +194,7 @@ final class InternalFieldAccessTest extends KernelTestBase {
     $children = $this->childrenOf($parent);
     $this->assertCount(1, $children);
     $this->assertArrayHasKey((int) $hand_made->id(), $children, 'The hand-made link is adopted, not duplicated.');
-    $this->assertTrue(!empty(_menu_autopilot_link_data($children[(int) $hand_made->id()])['managed']));
+    $this->assertTrue(!empty($this->linkData($children[(int) $hand_made->id()])['managed']));
 
     $created_page = Node::create(['type' => 'page', 'title' => 'Created', 'status' => 1]);
     $created_page->save();
@@ -221,6 +221,19 @@ final class InternalFieldAccessTest extends KernelTestBase {
       // What an entity form does before it reports violations.
       $this->assertCount(0, $violations->filterByFieldAccess($this->menuAdmin), (string) $link->getTitle());
     }
+  }
+
+  /**
+   * The stored Autopilot map on a link, via the reporter.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
+   * @return array
+   *   The stored map, or an empty array.
+   */
+  private function linkData(MenuLinkContentInterface $link): array {
+    return $this->container->get('menu_autopilot.status_reporter')->getData($link);
   }
 
   /**

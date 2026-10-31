@@ -253,13 +253,15 @@ final class MenuAutopilotFormAndInstallTest extends KernelTestBase {
     $children = $this->childrenOf($parent);
     $child = reset($children);
     $this->assertInstanceOf(MenuLinkContentInterface::class, $child);
-    $this->assertNotEmpty(_menu_autopilot_link_data($child)['managed']);
+    // The reporter owns the map read; this child starts owned.
+    $reporter = $this->container->get('menu_autopilot.status_reporter');
+    $this->assertNotEmpty($reporter->getData($child)['managed']);
 
     $parent->set('menu_autopilot', NULL);
     $parent->save();
 
     $child = $this->reloadLink((int) $child->id());
-    $this->assertEmpty(_menu_autopilot_link_data($child)['managed'] ?? NULL);
+    $this->assertEmpty($reporter->getData($child)['managed'] ?? NULL);
 
     $form = [
       'actions' => [
