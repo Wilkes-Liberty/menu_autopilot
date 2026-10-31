@@ -489,7 +489,13 @@ final class NavStatusReporter {
    *   The stored map, or an empty array.
    */
   public function getData(MenuLinkContentInterface $link): array {
-    return _menu_autopilot_link_data($link);
+    // Missing field, empty field, or a non-array first item are all
+    // "no map". Callers treat that as [].
+    if (!$link->hasField('menu_autopilot') || $link->get('menu_autopilot')->isEmpty()) {
+      return [];
+    }
+    $value = $link->get('menu_autopilot')->first()->getValue();
+    return is_array($value) ? $value : [];
   }
 
 }
