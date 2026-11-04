@@ -158,7 +158,8 @@ final class MenuLinkAutopilotForm implements ContainerInjectionInterface {
         'add' => $this->t('Add missing children only'),
         'replace' => $this->t('Replace all children'),
       ],
-      '#default_value' => $this->existingChildrenPolicy($source['existing_children'] ?? 'adopt'),
+      // The reporter owns the policy allow-list; unknown values become adopt.
+      '#default_value' => $this->statusReporter->existingChildrenPolicy($source),
       '#attributes' => ['aria-describedby' => $existing_help_id],
       '#states' => ['visible' => $this->visibleIfSourceType(['term', 'bundle', 'manual'])],
     ];
@@ -354,7 +355,11 @@ final class MenuLinkAutopilotForm implements ContainerInjectionInterface {
 
     $source = [
       'type' => $type,
-      'existing_children' => $this->existingChildrenPolicy($values['existing_children'] ?? 'adopt'),
+      // Same allow-list as status and sync. Unknown submitted values
+      // become adopt.
+      'existing_children' => $this->statusReporter->existingChildrenPolicy([
+        'existing_children' => $values['existing_children'] ?? 'adopt',
+      ]),
       'reparent_matches' => !empty($values['reparent_matches']),
       'title_pattern' => trim((string) ($values['title_pattern'] ?? '')),
     ];
@@ -434,22 +439,6 @@ final class MenuLinkAutopilotForm implements ContainerInjectionInterface {
       'created_asc' => $this->t('Oldest first'),
       'preserve' => $this->t('Keep current order (drag to rearrange)'),
     ];
-  }
-
-  /**
-   * Normalize an Existing children policy to a known value.
-   *
-   * @param mixed $value
-   *   Stored or submitted policy.
-   *
-   * @return string
-   *   One of adopt, adopt_prune, add, or replace.
-   */
-  public function existingChildrenPolicy(mixed $value): string {
-    $value = (string) $value;
-    return in_array($value, ['adopt', 'adopt_prune', 'add', 'replace'], TRUE)
-      ? $value
-      : 'adopt';
   }
 
   /**
