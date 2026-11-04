@@ -103,7 +103,7 @@ final class InternalFieldApiWriteTest extends KernelTestBase {
     ]);
 
     $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
-    $this->assertSame([], _menu_autopilot_link_data($this->reload()));
+    $this->assertSame([], $this->linkData($this->reload()));
   }
 
   /**
@@ -245,7 +245,7 @@ final class InternalFieldApiWriteTest extends KernelTestBase {
       'menu_autopilot' => [['managed' => TRUE, 'node' => 1]],
     ]);
     $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
-    $this->assertSame([], _menu_autopilot_link_data($this->reload()));
+    $this->assertSame([], $this->linkData($this->reload()));
 
     $response = $this->restPatch(['menu_autopilot_dynamic' => [['value' => TRUE]]]);
     $this->assertSame(403, $response->getStatusCode(), (string) $response->getContent());
@@ -350,6 +350,19 @@ final class InternalFieldApiWriteTest extends KernelTestBase {
       ->accessCheck(FALSE)
       ->condition('title', $title)
       ->execute());
+  }
+
+  /**
+   * The stored Autopilot map on a link, via the reporter.
+   *
+   * @param \Drupal\menu_link_content\MenuLinkContentInterface $link
+   *   The menu link.
+   *
+   * @return array
+   *   The stored map, or an empty array.
+   */
+  private function linkData(MenuLinkContentInterface $link): array {
+    return $this->container->get('menu_autopilot.status_reporter')->getData($link);
   }
 
   /**

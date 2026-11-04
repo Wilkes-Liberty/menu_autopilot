@@ -70,7 +70,8 @@ function menu_autopilot_update_10201(): void {
     if (!$link instanceof MenuLinkContentInterface) {
       continue;
     }
-    $data = _menu_autopilot_link_data($link);
+    // Same map read as presave and the form: empty or non-array is [].
+    $data = \Drupal::service('menu_autopilot.status_reporter')->getData($link);
     $dynamic = empty($data['managed']) && (($data['source']['type'] ?? 'none') !== 'none');
     if (!$dynamic) {
       continue;

@@ -79,7 +79,8 @@ final class MenuLinkAutopilotForm implements ContainerInjectionInterface {
       return;
     }
     // Never offer the controls on a link the module generates and owns.
-    $data = _menu_autopilot_link_data($link);
+    // The reporter already injected here owns the map read.
+    $data = $this->statusReporter->getData($link);
     if (!empty($data['managed'])) {
       $form['menu_autopilot_managed'] = [
         '#type' => 'item',
