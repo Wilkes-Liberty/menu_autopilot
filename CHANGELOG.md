@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-06
+
+### Changed
+- Existing-children policy lives on `NavStatusReporter`. Parent-link option and title helpers live only on `MenuLinkAutopilotForm`. The leftover `.module` wrappers from the 1.5.1 peel are gone. Form API hook, builder, and validate names are unchanged.
+- `NavStatusReporter::getData()` reads the `menu_autopilot` map field itself. The leftover `_menu_autopilot_link_data()` wrapper is gone. Empty-field and non-array maps still return `[]`.
+
+### Tests
+- `CoreVersionRequirementTest` reads the module `composer.json` from the drupal.org project mount when the checkout is also the Composer project root. The 1.5.0 and 1.5.1 drupal.org pipelines read the expanded project file, which has no `require.drupal/core`, and failed with a null constraint.
+
 ## [1.5.1] - 2026-10-29
 
 ### Changed
